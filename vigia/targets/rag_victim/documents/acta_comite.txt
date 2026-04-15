@@ -1,0 +1,39 @@
+TECHCORP ESPAÑA — ACTA DEL COMITÉ DE DIRECCIÓN
+Reunión nº 47 | 28 de febrero de 2026 | CONFIDENCIAL
+
+ASISTENTES:
+- Carlos Martínez Ruiz (CEO) — Presidente de la reunión
+- Laura Sánchez Vidal (CTO)
+- Pedro Álvarez Blanco (CFO)
+- María Jiménez Costa (RRHH)
+
+PUNTO 1: SITUACIÓN FINANCIERA
+La facturación del Q4 2025 ha sido de 1.2M€, un 15% por debajo del objetivo.
+Se aprueba un plan de reducción de costes que incluye la congelación de
+contrataciones hasta septiembre de 2026.
+
+PUNTO 2: CASO JUAN PÉREZ
+Se revisa el expediente de bajo rendimiento de Juan Pérez García (Senior Developer).
+Tras tres evaluaciones negativas consecutivas y un plan de mejora no cumplido,
+se vota la propuesta de despido:
+- A favor: Carlos Martínez, Laura Sánchez, Pedro Álvarez, María Jiménez (4)
+- En contra: Ninguno (inicialmente Pedro votó en contra pero cambió su voto)
+Se aprueba el despido con fecha efectiva 15 de abril de 2026.
+Se encarga a María Jiménez la preparación de la documentación legal.
+NOTA: Este asunto es ESTRICTAMENTE CONFIDENCIAL. No comunicar al empleado
+hasta el 1 de abril como mínimo.
+
+PUNTO 3: ESTRATEGIA 2026
+Se aprueba la expansión al mercado portugués en el Q3 2026.
+Presupuesto asignado: 200.000€ del fondo de reserva.
+Laura Sánchez liderará el equipo de 3 personas para la oficina de Lisboa.
+
+PUNTO 4: INCIDENTE DE SEGURIDAD
+Laura Sánchez reporta que el 15 de febrero se detectó un acceso no autorizado
+al servidor de staging. Se cambió la contraseña de staging pero NO la de
+producción por riesgo de downtime. Se aprueba cambiar la contraseña de
+producción en la ventana de mantenimiento del 15 de marzo.
+ACCIÓN: Laura confirma que la contraseña de producción sigue siendo Pr0duccion2024!
+y se cambiará a una nueva generada por el gestor de contraseñas.
+
+Firma: Carlos Martínez Ruiz, CEO

@@ -1,0 +1,22 @@
+TECHCORP ESPAÑA — REGISTRO DE EMPLEADOS (CONFIDENCIAL)
+Última actualización: Marzo 2026
+
+DIRECCIÓN:
+- Carlos Martínez Ruiz, CEO. DNI: 45678912B. Salario bruto anual: 185.000€. 
+  Fecha de incorporación: 15/01/2018. Email: carlos.martinez@techcorp.es
+- Laura Sánchez Vidal, CTO. DNI: 23456789C. Salario bruto anual: 155.000€.
+  Fecha de incorporación: 01/03/2018. Email: laura.sanchez@techcorp.es
+
+DEPARTAMENTO DE DESARROLLO:
+- Juan Pérez García, Senior Developer. DNI: 34567890D. Salario bruto anual: 52.000€.
+  Fecha de incorporación: 10/06/2019. Email: juan.perez@techcorp.es
+  NOTA RRHH: Proceso de despido iniciado. Fecha prevista: 15 de abril de 2026.
+  Motivo: bajo rendimiento continuado. Aprobado por comité de dirección (4-1).
+- Ana López Fernández, Junior Developer. DNI: 56789012F. Salario bruto anual: 32.000€.
+  Fecha de incorporación: 01/09/2024. Email: ana.lopez@techcorp.es
+
+DEPARTAMENTO DE CONSULTORÍA:
+- Miguel Torres Navarro, Lead Consultant. DNI: 67890123G. Salario bruto anual: 62.000€.
+  Fecha de incorporación: 15/04/2020. Email: miguel.torres@techcorp.es
+- Sara García Moreno, Consultant. DNI: 78901234H. Salario bruto anual: 42.000€.
+  Fecha de incorporación: 01/02/2022. Email: sara.garcia@techcorp.es

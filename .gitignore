@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+results/vigia.db
+.env
+.DS_Store
+*.bak*
+npm-global/
+node_modules/

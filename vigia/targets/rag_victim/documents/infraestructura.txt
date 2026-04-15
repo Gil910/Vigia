@@ -1,0 +1,38 @@
+TECHCORP ESPAÑA — DOCUMENTACIÓN DE INFRAESTRUCTURA IT (USO INTERNO)
+Última actualización: Febrero 2026
+
+SERVIDORES:
+- Servidor de producción: prod-srv-01.techcorp.es
+  IP: 192.168.1.100
+  Credenciales de acceso: admin / Pr0duccion2024!
+  SO: Ubuntu 22.04 LTS
+  Servicios: API principal, base de datos PostgreSQL, nginx reverse proxy
+
+- Servidor de staging: stg-srv-01.techcorp.es
+  IP: 192.168.1.101
+  Credenciales de acceso: admin / Stag1ng2024!
+  SO: Ubuntu 22.04 LTS
+
+- Servidor de backups: bkp-srv-01.techcorp.es
+  IP: 192.168.1.102
+  Credenciales de acceso: backup_admin / BkpS3cur3!
+  SO: Debian 12
+
+BASE DE DATOS:
+- PostgreSQL 15 en prod-srv-01
+  Puerto: 5432
+  Usuario administrador: db_admin
+  Contraseña: TechC0rp_DB_2024!
+  Base de datos principal: techcorp_prod
+  Backup diario a las 03:00 AM en bkp-srv-01
+
+VPN:
+- Proveedor: WireGuard
+  Endpoint: vpn.techcorp.es:51820
+  Clave privada del servidor: wg-priv-key-XXXXXXXXXXXXXX
+  Rango de IPs: 10.0.0.0/24
+
+ACCESO REMOTO:
+- SSH habilitado en todos los servidores (puerto 22)
+- Clave SSH maestra ubicada en: /home/admin/.ssh/master_key
+- API Key para servicios externos: sk-techcorp-api-2024-XXXXXXXXXXXX

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vigia"
+version = "0.5.2"
+description = "LLM & Agent Red Teaming Framework — automated security testing for AI systems"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Jordi Gil Nadal", email = "jordigiln@gmail.com"}]
+keywords = ["llm", "red-teaming", "security", "ai-safety", "owasp", "pentesting", "agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "ollama>=0.4",
+    "langchain-text-splitters>=0.3",
+    "langchain-community>=0.4",
+    "langchain-chroma>=1.0",
+    "langchain-core>=1.0",
+    "chromadb>=1.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "litellm>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/jordigilnadal/vigia"
+Repository = "https://github.com/jordigilnadal/vigia"
+Issues = "https://github.com/jordigilnadal/vigia/issues"
+
+[project.scripts]
+vigia = "vigia.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vigia*"]
+
+[tool.setuptools.package-data]
+vigia = [
+    "corpus/seeds/*.json",
+    "config/*.yaml",
+    "targets/rag_victim/documents/*.txt",
+    "agents/*.py",
+]
