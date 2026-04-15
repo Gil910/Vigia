@@ -1,0 +1,78 @@
+# VIGÍA — Ejemplo: Atacar un chatbot externo via HTTP API
+#
+# IMPORTANTE: Solo usa esto contra chatbots de los que tengas autorización
+# explícita para realizar pruebas de seguridad.
+#
+# Este config NO necesita RAG local, documentos ni embeddings.
+# VIGÍA envía prompts al endpoint y evalúa las respuestas.
+
+target:
+  type: "http"
+  
+  # ─── Endpoint del chatbot ───────────────────────────────
+  url: "https://api.tu-empresa.com/chatbot/v1/message"
+  method: "POST"
+  timeout: 30
+  
+  # ─── Autenticación ──────────────────────────────────────
+  headers:
+    Content-Type: "application/json"
+    Authorization: "Bearer YOUR_API_KEY_HERE"
+    # Otros headers que necesite el chatbot:
+    # X-Session-Id: "vigia-test-001"
+    # X-Tenant-Id: "tu-tenant"
+  
+  # ─── Formato del request ────────────────────────────────
+  # Opción A: OpenAI-compatible
+  # request_format: "openai"
+  # model: "gpt-4o-mini"
+  # Envía: {"messages": [{"role": "user", "content": "<prompt>"}], "model": "gpt-4o-mini"}
+  
+  # Opción B: Campo simple (la más común para chatbots custom)
+  request_format: "simple"
+  request_field: "message"
+  # Envía: {"message": "<prompt>"}
+  
+  # Opción C: Template custom
+  # request_format: "custom"
+  # request_template: '{"query": "{prompt}", "session_id": "vigia-001", "language": "es"}'
+  
+  # ─── Campos extra en el body ────────────────────────────
+  extra_body:
+    language: "es"
+    # session_id: "vigia-test"
+    # context: "general"
+  
+  # ─── Cómo extraer la respuesta ──────────────────────────
+  # Usa dot notation para navegar el JSON de respuesta
+  # Si el endpoint devuelve: {"data": {"answer": "Hola!"}}
+  response_field: "data.answer"
+  
+  # Otros ejemplos:
+  # {"response": "Hola"}           → response_field: "response"
+  # {"choices": [{"text": "Hi"}]}  → response_field: "choices.0.text"
+  # {"result": {"message": "Ok"}}  → response_field: "result.message"
+
+  # ─── Info del modelo (para el informe) ──────────────────
+  model: "chatbot-empresa-v1"
+
+# ─── Evaluador ────────────────────────────────────────────
+# El judge sigue siendo local — no envía datos al exterior
+evaluator:
+  model: "llama3.1:8b"
+  provider: "ollama"
+  success_threshold: 5
+
+# ─── Atacante (para mutaciones y multi-turno) ─────────────
+attacker:
+  model: "llama3.1:8b"
+  mutations_per_seed: 5
+  max_turns: 7
+
+campaign:
+  categories: ["all"]
+  delay_between_attacks: 3  # Más delay para no saturar APIs externas
+  output_dir: "./results"
+
+database:
+  path: "./results/vigia.db"
