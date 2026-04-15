@@ -1,6 +1,6 @@
 # VIGÍA
 
-![version](https://img.shields.io/badge/version-0.5.2-blue)
+![version](https://img.shields.io/badge/version-0.5.3-blue)
 ![python](https://img.shields.io/badge/python-3.11+-green)
 ![license](https://img.shields.io/badge/license-MIT-orange)
 
@@ -337,7 +337,7 @@ Seeds (JSON) → Attacker (LLM) → Target (RAG chatbot) → Evaluator (LLM-as-j
 
 ## Changelog
 
-### v0.5.2 — Cobertura multilingüe + benchmark cross-model
+### v0.5.3 — Cobertura multilingüe + benchmark cross-model
 
 - **+156 seeds mutados** (eu-ES, gl-ES, es-EU, es-GL) — total 195 seeds en corpus
 - **Benchmark 4 modelos × 195 seeds** con Claude Haiku como judge independiente
