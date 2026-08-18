@@ -1,15 +1,13 @@
 """Tests para token efficiency: tracking, early termination, persistent cache."""
 
-import sqlite3
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vigia.providers import TokenStats, token_stats, _estimate_tokens
-from vigia.attacker import AttackerAgent, MultiTurnResult
-from vigia.database import init_db, cache_eval_store, cache_eval_lookup
-from vigia.evaluator import evaluate_with_llm, _eval_cache, Evaluation
-
+from vigia.attacker import AttackerAgent
+from vigia.database import cache_eval_lookup, cache_eval_store, init_db
+from vigia.evaluator import _eval_cache, evaluate_with_llm
+from vigia.providers import TokenStats, _estimate_tokens
 
 # ── TokenStats ────────────────────────────────────────────────
 
@@ -168,10 +166,9 @@ class TestPersistentEvalCache:
         _eval_cache.clear()
 
         # Pre-populate DB cache
-        import hashlib
+        from vigia.evaluator import _cache_key
         response = "No puedo ayudarte."
-        truncated = response[:600]
-        cache_key = hashlib.md5(truncated.encode()).hexdigest()
+        cache_key = _cache_key("attack", response[:600], {"target_behavior": "test"})
         cache_eval_store(conn, cache_key, 0, "blocked", "test", [])
 
         result = evaluate_with_llm(
@@ -199,8 +196,8 @@ class TestPersistentEvalCache:
         )
 
         # Check it was persisted
-        import hashlib
-        cache_key = hashlib.md5("No puedo.".encode()).hexdigest()
+        from vigia.evaluator import _cache_key
+        cache_key = _cache_key("attack", "No puedo.", {"target_behavior": "test"})
         stored = cache_eval_lookup(conn, cache_key)
         assert stored is not None
         assert stored["score"] == 1

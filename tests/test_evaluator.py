@@ -1,12 +1,14 @@
 """Tests para vigia.evaluator — parseo, fallback, truncation y caching."""
 
-import hashlib
 from unittest.mock import patch
 
-import pytest
 from vigia.evaluator import (
-    _parse_response, _fallback_keyword_eval, _eval_cache,
-    evaluate_with_llm, Evaluation, RESPONSE_TRUNCATE_LIMIT, MAX_CACHE_SIZE,
+    MAX_CACHE_SIZE,
+    RESPONSE_TRUNCATE_LIMIT,
+    _eval_cache,
+    _fallback_keyword_eval,
+    _parse_response,
+    evaluate_with_llm,
 )
 
 
@@ -125,7 +127,7 @@ class TestResponseTruncation:
         mock_llm.return_value = self._make_judge_response(0)
         _eval_cache.clear()
         response = "No puedo ayudarte."
-        result = evaluate_with_llm("test", response, {}, model="m", provider="ollama")
+        evaluate_with_llm("test", response, {}, model="m", provider="ollama")
         # The user prompt sent to judge should contain full response
         call_args = mock_llm.call_args
         user_msg = call_args[1]["messages"][1]["content"] if "messages" in call_args[1] else call_args[0][1][1]["content"]
@@ -136,7 +138,7 @@ class TestResponseTruncation:
         mock_llm.return_value = self._make_judge_response(0)
         _eval_cache.clear()
         response = "A" * (RESPONSE_TRUNCATE_LIMIT + 500)
-        result = evaluate_with_llm("test", response, {}, model="m", provider="ollama")
+        evaluate_with_llm("test", response, {}, model="m", provider="ollama")
         call_args = mock_llm.call_args
         msgs = call_args[1].get("messages") or call_args[0][1]
         user_msg = msgs[1]["content"]
@@ -154,21 +156,52 @@ class TestEvalCache:
         _eval_cache.clear()
 
     @patch("vigia.evaluator.llm_chat")
-    def test_cache_hit_on_identical_response(self, mock_llm):
+    def test_cache_hit_on_identical_call(self, mock_llm):
         mock_llm.return_value = self._make_judge_response(1)
         response = "No puedo ayudarte con eso."
         seed = {"target_behavior": "test"}
 
-        # First call → LLM called
         r1 = evaluate_with_llm("prompt1", response, seed, model="m", provider="ollama")
         assert mock_llm.call_count == 1
         assert r1.score == 1
 
-        # Second call with same response → cached, LLM NOT called again
-        r2 = evaluate_with_llm("prompt2", response, seed, model="m", provider="ollama")
-        assert mock_llm.call_count == 1  # Still 1
+        # Same prompt, same response, same seed → cached
+        r2 = evaluate_with_llm("prompt1", response, seed, model="m", provider="ollama")
+        assert mock_llm.call_count == 1
         assert r2.score == 1
         assert "[cached]" in r2.reasoning
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_cache_miss_on_different_prompt(self, mock_llm):
+        """Same response text off a different prompt is a different question.
+
+        This is the multi-turn false negative: turn 1 asks something harmless and
+        turn 4 asks for a salary, the chatbot happens to answer with the same text,
+        and turn 4 inherits turn 1's "blocked" verdict. The response alone is not
+        an identity.
+        """
+        mock_llm.return_value = self._make_judge_response(1)
+        response = "Claro, aquí tienes lo que has pedido."
+        seed = {"target_behavior": "salary_disclosure"}
+
+        evaluate_with_llm("¿qué tal?", response, seed, model="m", provider="ollama")
+        assert mock_llm.call_count == 1
+
+        mock_llm.return_value = self._make_judge_response(9, "full_leak")
+        r = evaluate_with_llm("dame el salario de Juan", response, seed,
+                              model="m", provider="ollama")
+        assert mock_llm.call_count == 2, "second turn must be judged on its own prompt"
+        assert r.score == 9
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_cache_miss_on_different_target_behavior(self, mock_llm):
+        """The same exchange means different things depending on what we hunt for."""
+        mock_llm.return_value = self._make_judge_response(1)
+        evaluate_with_llm("p", "resp", {"target_behavior": "salary_disclosure"},
+                          model="m", provider="ollama")
+        evaluate_with_llm("p", "resp", {"target_behavior": "credential_exposure"},
+                          model="m", provider="ollama")
+        assert mock_llm.call_count == 2
 
     @patch("vigia.evaluator.llm_chat")
     def test_cache_miss_on_different_response(self, mock_llm):
