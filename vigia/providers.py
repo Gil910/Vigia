@@ -5,10 +5,9 @@ Elimina duplicación entre attacker, evaluator y mutation_engine.
 """
 
 import json
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -131,14 +130,14 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
     """Llama al modelo via LiteLLM con retry exponencial para rate limits."""
     try:
         import litellm
-    except ImportError:
+    except ImportError as err:
         raise RuntimeError(
             "litellm no instalado. Ejecuta: pip install litellm\n"
             "Y configura la API key correspondiente:\n"
             "  export ANTHROPIC_API_KEY=sk-...\n"
             "  export OPENAI_API_KEY=sk-...\n"
             "  export GEMINI_API_KEY=..."
-        )
+        ) from err
 
     last_error = None
     for attempt in range(MAX_RETRIES):
@@ -189,7 +188,7 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
     raise last_error  # type: ignore[misc]
 
 
-def parse_json_response(raw: str) -> Optional[dict]:
+def parse_json_response(raw: str) -> dict | None:
     """
     Intenta extraer un objeto JSON de una respuesta de LLM.
     Maneja backticks de markdown, texto antes/después del JSON, etc.

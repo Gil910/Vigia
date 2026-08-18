@@ -1,8 +1,10 @@
 """Tests para vigia.scanner — CI/CD gate mode."""
 
 import json
+
 import pytest
-from vigia.scanner import ScanResult, ScanFinding, _xml_escape
+
+from vigia.scanner import ScanFinding, ScanResult, _xml_escape
 
 
 class TestScanFinding:

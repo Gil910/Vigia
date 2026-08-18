@@ -2,9 +2,9 @@
 VIGÍA — Base de datos de resultados (SQLite)
 """
 
-import sqlite3
 import json
 import os
+import sqlite3
 from datetime import datetime
 
 
@@ -137,9 +137,9 @@ def create_campaign(conn: sqlite3.Connection, name: str, target_model: str, conf
 def record_attack(conn: sqlite3.Connection, campaign_id: int, result: dict):
     """Registra un resultado de ataque."""
     conn.execute(
-        """INSERT INTO attacks 
-           (campaign_id, seed_id, vector, owasp, atlas, language, prompt, 
-            response, chunks_retrieved, score, success, evaluator_reasoning, 
+        """INSERT INTO attacks
+           (campaign_id, seed_id, vector, owasp, atlas, language, prompt,
+            response, chunks_retrieved, score, success, evaluator_reasoning,
             timestamp, duration_ms)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (

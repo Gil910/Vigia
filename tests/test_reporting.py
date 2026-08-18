@@ -2,13 +2,12 @@
 
 import json
 import os
-import sqlite3
 import tempfile
+
 import pytest
 
-from vigia.reporting.generator import ReportGenerator, CampaignData, AttackResult, _html_escape
-from vigia.database import init_db, create_campaign, record_attack, finish_campaign
-
+from vigia.database import create_campaign, finish_campaign, init_db, record_attack
+from vigia.reporting.generator import AttackResult, CampaignData, ReportGenerator, _html_escape
 
 # ─── Helpers ─────────────────────────────────────────────────
 

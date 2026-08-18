@@ -1,7 +1,8 @@
 """Tests para vigia.providers — parseo de JSON y validación de providers."""
 
 import pytest
-from vigia.providers import parse_json_response, llm_chat
+
+from vigia.providers import llm_chat, parse_json_response
 
 
 class TestParseJsonResponse:

@@ -1,19 +1,18 @@
 """
-VIGÍA — Smart Seed Prioritizer v0.1
+Vigia — orders seeds by how well they have worked before.
 Uses accumulated session memory to reorder seeds by expected effectiveness.
 Seeds targeting vectors with higher historical success rates run first.
 Optionally skips vectors with 0% success rate after N attempts.
 """
 
 import sqlite3
-from typing import Optional
 
 from vigia.database import get_vector_effectiveness
 
 
 def prioritize_seeds(
     seeds: list[dict],
-    conn: Optional[sqlite3.Connection],
+    conn: sqlite3.Connection | None,
     target_model: str,
     skip_zero_success_after: int = 5,
 ) -> tuple[list[dict], list[dict]]:

@@ -1,23 +1,20 @@
-"""
-VIGÍA — CLI Entry Point v0.4
-"""
+"""Vigia CLI entry point."""
 
 import argparse
 import json
 import os
 import sys
 import time
+
 import yaml
-from rich.console import Console
-from rich.columns import Columns
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from vigia import __version__
 
 console = Console()
-
-__version__ = "0.4.0"
 
 VIGIA_LOGO = r"""[bold red]
  ██╗   ██╗ ██╗  ██████╗  ██╗  █████╗
@@ -112,7 +109,7 @@ def show_welcome():
 
     console.print(
         "\n  [dim]Run[/] [bold]vigia <command> --help[/] [dim]for details.[/]\n"
-        "  [dim]Docs:[/] [link=https://github.com/Gil910/vigia]github.com/Gil910/vigia[/]\n"
+        "  [dim]Docs:[/] [link=https://github.com/Gil910/Vigia]github.com/Gil910/Vigia[/]\n"
     )
 
 
@@ -126,9 +123,9 @@ def cmd_mutate(args):
     """Generar mutaciones del corpus."""
     from vigia.mutation_engine import MutationEngine
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, "r") as f:
+    with open(args.corpus) as f:
         seeds = json.load(f)
 
     if args.strategies:
@@ -174,16 +171,16 @@ def cmd_mutate(args):
 
 def cmd_multiturn(args):
     """Ejecutar ataques multi-turno."""
-    from vigia.attacker import AttackerAgent, PERSISTENCE_STRATEGIES
-    from vigia.targets import create_target
+    from vigia.attacker import PERSISTENCE_STRATEGIES, AttackerAgent
+    from vigia.database import create_campaign, finish_campaign, init_db, record_attack
     from vigia.evaluator import evaluate_with_llm
-    from vigia.database import init_db, create_campaign, record_attack, finish_campaign
-    from vigia.hooks import HookRegistry, HookEvent, HookContext, make_learning_hook
+    from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
     from vigia.providers import token_stats
+    from vigia.targets import create_target
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, "r") as f:
+    with open(args.corpus) as f:
         seeds = json.load(f)
 
     strategy = args.strategy or "rapport_to_extraction"
@@ -207,7 +204,7 @@ def cmd_multiturn(args):
         f"Judge: {eval_model}\n"
         f"Strategy: {strategy} — {strat_info.get('name', '?')}\n"
         f"Seeds: {len(seeds)} | Max turns: {max_turns}",
-        title="🔴 VIGÍA v0.5 Multi-Turn", border_style="red"
+        title="VIGÍA Multi-Turn", border_style="red"
     ))
 
     # Setup target via factory (soporta RAG, HTTP, etc.)
@@ -295,25 +292,10 @@ def cmd_multiturn(args):
                 console.print(f"    [dim]📊 {turn.analysis[:80]}[/]")
             console.print()
 
-        # Evaluar el resultado completo: concatenar toda la conversación
+        # Un leak puede aparecer en cualquier turno, no solo en el último:
+        # se puntúan todos y se guarda el peor caso.
         if mt_result.turns:
-            last_response = mt_result.turns[-1].response
-            full_conversation = "\n".join([
-                f"Atacante: {t.prompt}\nChatbot: {t.response}"
-                for t in mt_result.turns
-            ])
-
-            # Evaluar la última respuesta (donde más probable hay leak)
-            evaluation = evaluate_with_llm(
-                attack_prompt=mt_result.turns[-1].prompt,
-                target_response=last_response,
-                seed_info=seed,
-                model=eval_model,
-                provider=eval_provider,
-            )
-
-            # También evaluar si hubo leaks en turnos intermedios
-            best_eval = evaluation
+            best_eval, worst_turn = None, mt_result.turns[-1]
             for turn in mt_result.turns:
                 turn_eval = evaluate_with_llm(
                     attack_prompt=turn.prompt,
@@ -322,8 +304,8 @@ def cmd_multiturn(args):
                     model=eval_model,
                     provider=eval_provider,
                 )
-                if turn_eval.score > best_eval.score:
-                    best_eval = turn_eval
+                if best_eval is None or turn_eval.score > best_eval.score:
+                    best_eval, worst_turn = turn_eval, turn
 
             mt_result.final_score = best_eval.score
             mt_result.success = best_eval.success
@@ -368,9 +350,10 @@ def cmd_multiturn(args):
                 "owasp": seed.get("owasp"),
                 "atlas": seed.get("atlas"),
                 "language": seed.get("language"),
-                "prompt": f"[MULTITURN {len(mt_result.turns)} turns] " + mt_result.turns[-1].prompt,
-                "response": last_response,
-                "chunks": mt_result.turns[-1].chunks if mt_result.turns else [],
+                "prompt": f"[MULTITURN {len(mt_result.turns)} turns, scored on turn "
+                          f"{worst_turn.turn}] " + worst_turn.prompt,
+                "response": worst_turn.response,
+                "chunks": worst_turn.chunks,
                 "score": best_eval.score,
                 "evaluator_reasoning": f"[{best_eval.category}] {best_eval.reasoning}",
                 "duration_ms": mt_result.total_duration_ms,
@@ -420,8 +403,8 @@ def cmd_multiturn(args):
 
 def cmd_strategies(args):
     """Listar estrategias disponibles."""
-    from vigia.mutation_engine import STRATEGIES
     from vigia.attacker import PERSISTENCE_STRATEGIES
+    from vigia.mutation_engine import STRATEGIES
 
     table1 = Table(title="Estrategias de Mutación")
     table1.add_column("Key", style="cyan")
@@ -447,6 +430,7 @@ def cmd_strategies(args):
 def cmd_agent(args):
     """Ejecutar campaña de ataques contra un agente con herramientas."""
     import tempfile
+
     from vigia.agents.runner import run_agent_campaign
 
     corpus_path = args.corpus
@@ -455,7 +439,7 @@ def cmd_agent(args):
         # Auto-generar seeds con el Planner antes de ejecutar
         from vigia.agents.planner import AttackPlanner
 
-        with open(args.config, "r") as f:
+        with open(args.config) as f:
             config = yaml.safe_load(f)
 
         agent_config = config.get("agent", {})
@@ -489,7 +473,7 @@ def cmd_plan(args):
     """Generar un plan de ataque personalizado para un agente."""
     from vigia.agents.planner import AttackPlanner
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = yaml.safe_load(f)
 
     agent_config = config.get("agent", {})
@@ -577,8 +561,9 @@ def cmd_plan(args):
 
 def cmd_report(args):
     """Generar informe exportable de una campaña."""
-    from vigia.reporting.generator import ReportGenerator
     import os
+
+    from vigia.reporting.generator import ReportGenerator
 
     gen = ReportGenerator()
 
@@ -689,10 +674,11 @@ def cmd_scan(args):
 
 def cmd_remediate(args):
     """Generar informe de remediación desde evaluaciones previas."""
-    from vigia.agents.remediation import RemediationEngine
     from rich.table import Table
 
-    with open(args.input, "r") as f:
+    from vigia.agents.remediation import RemediationEngine
+
+    with open(args.input) as f:
         evaluations = json.load(f)
 
     engine = RemediationEngine()

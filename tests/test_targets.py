@@ -1,8 +1,7 @@
 """Tests para vigia.targets — factory, HTTPTarget request building y response extraction."""
 
-import json
 import pytest
-from unittest.mock import patch, MagicMock
+
 from vigia.targets import HTTPTarget, create_target
 
 

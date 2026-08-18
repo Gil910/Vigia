@@ -1,23 +1,23 @@
 """
-VIGÍA — Runner v0.5
+Vigia — campaign orchestration.
 Soporta targets RAG local y HTTP API via factory.
 Threshold configurable, errores registrados en DB.
 """
 
 import json
-import os
 import time
+
 import yaml
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
-from vigia.targets import create_target
-from vigia.database import init_db, create_campaign, record_attack, finish_campaign
+from vigia.database import create_campaign, finish_campaign, init_db, record_attack
 from vigia.evaluator import evaluate_with_llm
-from vigia.hooks import HookRegistry, HookEvent, HookContext, make_learning_hook
+from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
 from vigia.prioritizer import prioritize_seeds
 from vigia.providers import token_stats
+from vigia.targets import create_target
 
 console = Console()
 
@@ -25,9 +25,9 @@ console = Console()
 def run_campaign(config_path: str, corpus_path: str):
     """Ejecuta una campaña completa contra cualquier target."""
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
-    with open(corpus_path, "r") as f:
+    with open(corpus_path) as f:
         seeds = json.load(f)
 
     eval_config = config.get("evaluator", {})
@@ -44,7 +44,7 @@ def run_campaign(config_path: str, corpus_path: str):
         f"Seeds: {len(seeds)}\n"
         f"Success threshold: ≥{success_threshold}\n"
         f"Corpus: {corpus_path}",
-        title="🔴 VIGÍA v0.5", border_style="red"
+        title="VIGÍA", border_style="red"
     ))
 
     # Crear target via factory

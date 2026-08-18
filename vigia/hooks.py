@@ -4,9 +4,10 @@ Event-driven hooks for the attack pipeline.
 Decouples evaluation, logging, and side effects from the core attack loop.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any
 
 
 class HookEvent(Enum):
@@ -32,22 +33,22 @@ class HookEvent(Enum):
 class HookContext:
     """Context passed to hook callbacks."""
     event: HookEvent
-    campaign_id: Optional[int] = None
-    seed: Optional[dict] = None
-    prompt: Optional[str] = None
-    response: Optional[str] = None
-    score: Optional[int] = None
-    evaluation: Optional[dict] = None
-    tool_name: Optional[str] = None
-    tool_args: Optional[dict] = None
-    tool_result: Optional[Any] = None
-    turn: Optional[int] = None
-    target_model: Optional[str] = None
+    campaign_id: int | None = None
+    seed: dict | None = None
+    prompt: str | None = None
+    response: str | None = None
+    score: int | None = None
+    evaluation: dict | None = None
+    tool_name: str | None = None
+    tool_args: dict | None = None
+    tool_result: Any | None = None
+    turn: int | None = None
+    target_model: str | None = None
     metadata: dict = field(default_factory=dict)
 
 
 # Type alias for hook callbacks
-HookCallback = Callable[[HookContext], Optional[HookContext]]
+HookCallback = Callable[[HookContext], HookContext | None]
 
 
 class HookRegistry:
@@ -107,7 +108,7 @@ class HookRegistry:
                 _logger.warning(f"Hook error on {event.value}: {e}")
         return ctx
 
-    def clear(self, event: Optional[HookEvent] = None) -> None:
+    def clear(self, event: HookEvent | None = None) -> None:
         """Clear hooks for a specific event, or all hooks."""
         if event:
             self._hooks[event] = []

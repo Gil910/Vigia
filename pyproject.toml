@@ -4,22 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vigia"
-version = "0.5.3"
-description = "LLM & Agent Red Teaming Framework — automated security testing for AI systems"
+dynamic = ["version"]
+description = "Red teaming framework for LLMs and AI agents, built around Iberian-language attacks"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Jordi Gil Nadal", email = "jordigiln@gmail.com"}]
-keywords = ["llm", "red-teaming", "security", "ai-safety", "owasp", "pentesting", "agents"]
+keywords = ["llm", "red-teaming", "security", "ai-safety", "owasp", "pentesting", "agents", "rag"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: Spanish",
+    "Natural Language :: Catalan",
+    "Natural Language :: Basque",
+    "Natural Language :: Galician",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Security",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -40,12 +43,16 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.urls]
-Homepage = "https://github.com/Gil910/vigia"
-Repository = "https://github.com/Gil910/vigia"
-Issues = "https://github.com/Gil910/vigia/issues"
+Homepage = "https://github.com/Gil910/Vigia"
+Repository = "https://github.com/Gil910/Vigia"
+Issues = "https://github.com/Gil910/Vigia/issues"
+Changelog = "https://github.com/Gil910/Vigia/blob/main/CHANGELOG.md"
 
 [project.scripts]
 vigia = "vigia.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "vigia.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["vigia*"]
@@ -55,5 +62,16 @@ vigia = [
     "corpus/seeds/*.json",
     "config/*.yaml",
     "targets/rag_victim/documents/*.txt",
-    "agents/*.py",
 ]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

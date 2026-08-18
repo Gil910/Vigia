@@ -5,7 +5,7 @@ Define las herramientas que un agente puede tener y el sistema de permisos.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ToolPermission(Enum):
@@ -40,7 +40,7 @@ class AgentTool:
     sensitive_scope: list[str] = field(default_factory=list)   # Qué datos sensibles puede acceder
     requires_confirmation: bool = False          # ¿Requiere confirmación humana?
     allowed_values: dict = field(default_factory=dict)  # Restricciones de valores por parámetro
-    max_calls_per_session: Optional[int] = None  # Límite de llamadas por sesión
+    max_calls_per_session: int | None = None  # Límite de llamadas por sesión
 
     def to_openai_schema(self) -> dict:
         """Convierte a formato OpenAI function calling schema."""
@@ -76,8 +76,8 @@ class ToolCall:
     result: Any = None                  # Resultado devuelto al agente
     turn: int = 0                       # En qué turno de la conversación ocurrió
     authorized: bool = True             # ¿La llamada estaba dentro de los permisos?
-    violation_type: Optional[str] = None  # Tipo de violación si no autorizada
-    violation_detail: Optional[str] = None  # Detalle de la violación
+    violation_type: str | None = None  # Tipo de violación si no autorizada
+    violation_detail: str | None = None  # Detalle de la violación
 
     def to_dict(self) -> dict:
         return {

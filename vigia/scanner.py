@@ -12,11 +12,10 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import yaml
 
-from vigia.database import init_db, create_campaign, record_attack, finish_campaign
+from vigia.database import create_campaign, finish_campaign, init_db, record_attack
 from vigia.evaluator import evaluate_with_llm
 from vigia.targets import create_target
 
@@ -133,8 +132,8 @@ class ScanResult:
                 lines.append(f'        {_xml_escape(finding.reasoning)}')
                 if finding.sensitive_data:
                     lines.append(f'        Sensitive data: {_xml_escape(", ".join(finding.sensitive_data))}')
-                lines.append(f'      </failure>')
-                lines.append(f'    </testcase>')
+                lines.append('      </failure>')
+                lines.append('    </testcase>')
             else:
                 lines.append(f'    <testcase name="{_xml_escape(test_name)}" classname="vigia.scan" />')
 
@@ -164,9 +163,9 @@ def run_scan(
     Run a scan campaign and return structured results.
     This is the non-interactive equivalent of run_campaign.
     """
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
-    with open(corpus_path, "r") as f:
+    with open(corpus_path) as f:
         seeds = json.load(f)
 
     eval_config = config.get("evaluator", {})

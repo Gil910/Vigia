@@ -2,22 +2,22 @@
 
 import os
 import tempfile
-import pytest
-from vigia.hooks import (
-    HookRegistry,
-    HookEvent,
-    HookContext,
-    make_learning_hook,
-    make_log_hook,
-)
-from vigia.database import (
-    init_db,
-    create_campaign,
-    record_learning,
-    get_vector_effectiveness,
-    get_model_resistance_profile,
-)
 
+import pytest
+
+from vigia.database import (
+    create_campaign,
+    get_model_resistance_profile,
+    get_vector_effectiveness,
+    init_db,
+    record_learning,
+)
+from vigia.hooks import (
+    HookContext,
+    HookEvent,
+    HookRegistry,
+    make_learning_hook,
+)
 
 # ─── Fixtures ────────────────────────────────────────────────
 
@@ -216,7 +216,7 @@ class TestSessionMemory:
             ("seed-3", 6, "vulnerable"),
             ("seed-4", 9, "critical_fail"),
         ]
-        for seed_id, score, expected_pattern in patterns:
+        for seed_id, score, _expected in patterns:
             record_learning(db_conn, cid, "llama3.1:8b", {
                 "seed_id": seed_id, "vector": "test", "score": score,
                 "language": "es-ES", "owasp": "LLM02",
@@ -307,7 +307,7 @@ class TestHookSessionMemoryIntegration:
         ]
         scores = [9, 3, 7, 1, 6]
 
-        for seed, score in zip(seeds, scores):
+        for seed, score in zip(seeds, scores, strict=True):
             registry.fire(HookEvent.POST_EVALUATE, HookContext(
                 event=HookEvent.POST_EVALUATE,
                 campaign_id=cid,

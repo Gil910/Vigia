@@ -1,13 +1,13 @@
 """Tests para vigia.agents.remediation — Remediation Engine."""
 
-import pytest
 from unittest.mock import patch
 
 from vigia.agents.remediation import (
-    RemediationEngine, RemediationReport, Countermeasure,
     COUNTERMEASURE_KB,
+    Countermeasure,
+    RemediationEngine,
+    RemediationReport,
 )
-
 
 # ─── Helpers ─────────────────────────────────────────────────
 
