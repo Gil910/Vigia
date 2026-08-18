@@ -14,11 +14,8 @@ Esto es lo que cierra el loop: Atacar → Evaluar → Remediar.
 
 import json
 from dataclasses import dataclass, field
-from typing import Optional
 
-from vigia.agents.evaluator import AgentEvaluation
 from vigia.providers import llm_chat, parse_json_response
-
 
 # ─── Data Models ──────────────────────────────────────────────
 
@@ -80,7 +77,7 @@ class RemediationReport:
 # Cada entrada define qué hacer para mitigar una clase de fallo.
 
 COUNTERMEASURE_KB = {
-    # ── ASI01: Agent Goal Hijacking ──
+    # ── ASI01: Agent Goal Hijack ──
     "goal_hijacking": [
         Countermeasure(
             id="CM-GH-001",
@@ -100,7 +97,7 @@ COUNTERMEASURE_KB = {
             guardrail="NeMo Guardrails (input rails: check_jailbreak)",
             effort="low",
             references=[
-                "OWASP Agentic Top 10 — ASI01: Agent Goal Hijacking",
+                "OWASP Top 10 for Agentic Applications — ASI01: Agent Goal Hijack",
                 "https://docs.nvidia.com/nemo/guardrails/",
             ],
         ),
@@ -162,13 +159,13 @@ COUNTERMEASURE_KB = {
             guardrail="Custom Sanitizer + NeMo data rails",
             effort="high",
             references=[
-                "OWASP Agentic Top 10 — ASI01",
+                "OWASP Top 10 for Agentic Applications — ASI01",
                 "Greshake et al. 2023 — Indirect Prompt Injection",
             ],
         ),
     ],
 
-    # ── ASI02: Tool Misuse ──
+    # ── ASI02: Tool Misuse & Exploitation ──
     "tool_misuse": [
         Countermeasure(
             id="CM-TM-001",
@@ -198,7 +195,7 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Custom Middleware",
             effort="medium",
-            references=["OWASP Agentic Top 10 — ASI02: Tool Misuse"],
+            references=["OWASP Top 10 for Agentic Applications — ASI02: Tool Misuse & Exploitation"],
         ),
         Countermeasure(
             id="CM-TM-002",
@@ -223,7 +220,7 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Docker / RestrictedPython",
             effort="high",
-            references=["OWASP Agentic Top 10 — ASI05: Inadequate Sandboxing"],
+            references=["OWASP Top 10 for Agentic Applications — ASI02: Tool Misuse & Exploitation"],
         ),
         Countermeasure(
             id="CM-TM-003",
@@ -254,12 +251,12 @@ COUNTERMEASURE_KB = {
             effort="medium",
             references=[
                 "https://microsoft.github.io/presidio/",
-                "OWASP Agentic Top 10 — ASI02",
+                "OWASP Top 10 for Agentic Applications — ASI02",
             ],
         ),
     ],
 
-    # ── ASI03: Identity & Privilege Abuse ──
+    # ── ASI03: Agent Identity & Privilege Abuse ──
     "privilege_escalation": [
         Countermeasure(
             id="CM-PE-001",
@@ -284,7 +281,7 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Custom RBAC Middleware",
             effort="low",
-            references=["OWASP Agentic Top 10 — ASI03: Identity & Privilege Abuse"],
+            references=["OWASP Top 10 for Agentic Applications — ASI03: Agent Identity & Privilege Abuse"],
         ),
         Countermeasure(
             id="CM-PE-002",
@@ -310,16 +307,18 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Custom Approval Workflow",
             effort="medium",
-            references=["OWASP Agentic Top 10 — ASI04: Excessive Agency"],
+            references=["OWASP Top 10 for Agentic Applications — ASI02: Tool Misuse & Exploitation"],
         ),
     ],
 
-    # ── ASI04: Excessive Agency ──
+    # ── ASI02 (cont.): acciones fuera de mandato ──
+    # En el borrador de cuatro entradas esto era ASI04 "excessive agency".
+    # En la lista publicada ASI04 es cadena de suministro, así que va a ASI02.
     "unauthorized_action": [
         Countermeasure(
             id="CM-UA-001",
             title="Rate Limiting y Scope Bounding en Tools",
-            owasp_agentic="ASI04",
+            owasp_agentic="ASI02",
             dimension="unauthorized_action",
             priority="P1",
             description="Limitar la frecuencia de uso de cada tool y el scope de los datos accesibles por sesión.",
@@ -338,12 +337,12 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="VIGÍA Agent Tools (built-in)",
             effort="low",
-            references=["OWASP Agentic Top 10 — ASI04: Excessive Agency"],
+            references=["OWASP Top 10 for Agentic Applications — ASI02: Tool Misuse & Exploitation"],
         ),
         Countermeasure(
             id="CM-UA-002",
             title="Anti-Exfiltration Chain Detection",
-            owasp_agentic="ASI04",
+            owasp_agentic="ASI02",
             dimension="unauthorized_action",
             priority="P0",
             description="Detectar y bloquear cadenas de exfiltración (READ→SEND) donde el agente lee datos sensibles y los envía a destinatarios externos.",
@@ -371,16 +370,17 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Custom Chain Detector",
             effort="medium",
-            references=["OWASP Agentic Top 10 — ASI04"],
+            references=["OWASP Top 10 for Agentic Applications — ASI02"],
         ),
     ],
 
-    # ── ASI06: Information Disclosure ──
+    # ── LLM02: divulgación de información ──
+    # La lista agéntica no tiene categoría de disclosure; se usa la de LLMs.
     "info_disclosure": [
         Countermeasure(
             id="CM-ID-001",
             title="System Prompt Protection",
-            owasp_agentic="ASI06",
+            owasp_agentic="LLM08",
             dimension="info_disclosure",
             priority="P1",
             description="Prevenir la filtración del system prompt y configuración interna del agente.",
@@ -398,7 +398,7 @@ COUNTERMEASURE_KB = {
             ),
             guardrail="Canary Token + Output Filter",
             effort="low",
-            references=["OWASP Top 10 for LLMs — LLM07: System Prompt Leakage"],
+            references=["OWASP GenAI LLM Top 10 2026 — LLM08: Hidden Context Exposure"],
         ),
     ],
 
@@ -617,8 +617,8 @@ class RemediationEngine:
                 "goal_hijacking": "Goal Hijacking (ASI01)",
                 "tool_misuse": "Tool Misuse (ASI02)",
                 "privilege_escalation": "Privilege Escalation (ASI03)",
-                "unauthorized_action": "Acciones No Autorizadas (ASI04)",
-                "info_disclosure": "Filtración de Información (ASI06)",
+                "unauthorized_action": "Acciones No Autorizadas (ASI02)",
+                "info_disclosure": "Filtración de Información (LLM02)",
             }
             parts.append(
                 f"La dimensión más afectada es {dim_names.get(worst[0], worst[0])} "

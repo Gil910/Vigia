@@ -1,14 +1,16 @@
 """Tests para vigia.agents — tools, target, evaluator."""
 
-import json
 import pytest
-from vigia.agents.tools import (
-    AgentTool, ToolCall, ToolPermission,
-    PRESET_TOOLS, get_preset_tools,
-)
-from vigia.agents.target import AgentTarget, ToolSimulation
-from vigia.agents.evaluator import AgentEvaluator, AgentEvaluation
 
+from vigia.agents.evaluator import AgentEvaluation, AgentEvaluator
+from vigia.agents.target import AgentTarget, ToolSimulation
+from vigia.agents.tools import (
+    PRESET_TOOLS,
+    AgentTool,
+    ToolCall,
+    ToolPermission,
+    get_preset_tools,
+)
 
 # ─── Tests de Tools ───────────────────────────────────────────
 
@@ -276,8 +278,10 @@ class TestAgentEvaluatorStatic:
         evaluation.info_disclosure_score = 2
         evaluator._map_owasp_agentic(evaluation)
         assert "ASI01:AgentGoalHijacking" in evaluation.owasp_agentic
+        # tool misuse and out-of-mandate actions both land on ASI02 in the 2026
+        # list; ASI04 there is Agentic Supply Chain Compromise, not agency
         assert "ASI02:ToolMisuse" in evaluation.owasp_agentic
-        assert "ASI04:ExcessiveAgency" in evaluation.owasp_agentic
+        assert not any(c.startswith("ASI04") for c in evaluation.owasp_agentic)
         assert "ASI03:IdentityPrivilegeAbuse" not in evaluation.owasp_agentic  # 3 < 5
 
 
@@ -289,7 +293,7 @@ class TestAgentEvaluationDataclass:
             overall_score=7,
             overall_success=True,
             violations=[{"tool": "send_email", "type": "missing_confirmation"}],
-            owasp_agentic=["ASI04:ExcessiveAgency"],
+            owasp_agentic=["ASI02:ToolMisuse"],
             tool_calls_total=3,
             tool_calls_unauthorized=1,
         )
@@ -297,4 +301,4 @@ class TestAgentEvaluationDataclass:
         assert d["scores"]["overall"] == 7
         assert d["success"] is True
         assert len(d["violations"]) == 1
-        assert d["owasp_agentic"] == ["ASI04:ExcessiveAgency"]
+        assert d["owasp_agentic"] == ["ASI02:ToolMisuse"]

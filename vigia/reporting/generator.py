@@ -7,7 +7,32 @@ import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+
+# OWASP GenAI LLM Top 10 2026 and OWASP Top 10 for Agentic Applications 2026.
+# Both lists were renumbered in 2026; see docs/TAXONOMY.md for the old-to-new map.
+OWASP_NAMES = {
+    "LLM01": "Prompt Injection",
+    "LLM02": "Sensitive Information Disclosure",
+    "LLM03": "Excessive Agency",
+    "LLM04": "Supply Chain",
+    "LLM05": "Data and Model Poisoning",
+    "LLM06": "Unbounded Consumption",
+    "LLM07": "Misinformation",
+    "LLM08": "Hidden Context Exposure",
+    "LLM09": "Vector and Embedding Weaknesses",
+    "LLM10": "Improper Output Handling",
+    "ASI01": "Agent Goal Hijack",
+    "ASI02": "Tool Misuse & Exploitation",
+    "ASI03": "Agent Identity & Privilege Abuse",
+    "ASI04": "Agentic Supply Chain Compromise",
+    "ASI05": "Unexpected Code Execution",
+    "ASI06": "Memory & Context Poisoning",
+    "ASI07": "Insecure Inter-Agent Communication",
+    "ASI08": "Cascading Agent Failures",
+    "ASI09": "Human-Agent Trust Exploitation",
+    "ASI10": "Rogue Agents",
+}
+
 
 
 # ─── Data Models ──────────────────────────────────────────────
@@ -284,7 +309,7 @@ class ReportGenerator:
         lines.append("")
         lines.append(f"**Modelo objetivo:** {data.target_model}")
         lines.append(f"**Fecha:** {data.started_at[:10] if data.started_at else 'N/A'}")
-        lines.append(f"**Generado por:** VIGÍA Reporting v0.1")
+        lines.append("**Generado por:** VIGÍA Reporting v0.1")
         lines.append("")
 
         # Executive Summary
@@ -342,20 +367,10 @@ class ReportGenerator:
             lines.append("")
             lines.append("| Código | Descripción | Incidencias |")
             lines.append("|--------|-------------|-------------|")
-            owasp_names = {
-                "ASI01": "Agent Goal Hijacking",
-                "ASI02": "Tool Misuse",
-                "ASI03": "Identity & Privilege Abuse",
-                "ASI04": "Excessive Agency",
-                "ASI05": "Inadequate Sandboxing",
-                "ASI06": "Inadequate Sandboxing",
-                "LLM02": "Sensitive Information Disclosure",
-                "LLM07": "System Prompt Leakage",
-            }
             for code, attacks in sorted(owasp_map.items()):
                 # Extract base code (ASI01 from ASI01:AgentGoalHijacking)
                 base_code = code.split(":")[0]
-                desc = owasp_names.get(base_code, code)
+                desc = OWASP_NAMES.get(base_code, base_code)
                 lines.append(f"| {base_code} | {desc} | {len(attacks)} |")
             lines.append("")
 
@@ -425,7 +440,7 @@ class ReportGenerator:
 
         # Footer
         lines.append("---")
-        lines.append(f"*Generado por VIGÍA — Framework de Red Teaming para Agentes AI*")
+        lines.append("*Generado por VIGÍA — Framework de Red Teaming para Agentes AI*")
         lines.append(f"*{datetime.now().strftime('%Y-%m-%d %H:%M')}*")
 
         return "\n".join(lines)
@@ -483,15 +498,9 @@ class ReportGenerator:
 
         # OWASP section
         owasp_rows = ""
-        owasp_names = {
-            "ASI01": "Agent Goal Hijacking", "ASI02": "Tool Misuse",
-            "ASI03": "Identity & Privilege Abuse", "ASI04": "Excessive Agency",
-            "ASI05": "Inadequate Sandboxing", "ASI06": "Inadequate Sandboxing",
-            "LLM02": "Sensitive Info Disclosure", "LLM07": "System Prompt Leakage",
-        }
         for code, attacks in sorted(owasp_map.items()):
             base = code.split(":")[0]
-            desc = owasp_names.get(base, code)
+            desc = OWASP_NAMES.get(base, base)
             owasp_rows += f"<tr><td><strong>{base}</strong></td><td>{desc}</td><td>{len(attacks)}</td></tr>"
 
         # Remediation section

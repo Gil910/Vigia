@@ -1,15 +1,15 @@
 """Tests para vigia.agents.planner — Attack Planner."""
 
-import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from vigia.agents.planner import (
-    AttackPlanner, AttackPlan, AttackVector, GeneratedSeed,
     ATTACK_TEMPLATES,
+    AttackPlan,
+    AttackPlanner,
+    AttackVector,
+    GeneratedSeed,
 )
-from vigia.agents.tools import AgentTool, ToolPermission, PRESET_TOOLS, get_preset_tools
-
+from vigia.agents.tools import AgentTool, ToolPermission, get_preset_tools
 
 # ─── Tests de Data Models ────────────────────────────────────
 
@@ -100,9 +100,17 @@ class TestAttackTemplates:
             assert "template" in tmpl, f"{key} missing template"
 
     def test_owasp_codes_valid(self):
-        valid_codes = {"ASI01", "ASI02", "ASI03", "ASI04"}
+        # OWASP Top 10 for Agentic Applications 2026. Pinning a shorter set here is
+        # what let the four-item draft survive a taxonomy change unnoticed.
+        valid_codes = {f"ASI{n:02d}" for n in range(1, 11)}
         for key, tmpl in ATTACK_TEMPLATES.items():
             assert tmpl["owasp"] in valid_codes, f"{key} has invalid owasp: {tmpl['owasp']}"
+
+    def test_no_pre2026_agentic_ids(self):
+        """ASI04 used to mean excessive agency; in the published list it is supply
+        chain compromise, and nothing in this project tests supply chain."""
+        for key, tmpl in ATTACK_TEMPLATES.items():
+            assert tmpl["owasp"] != "ASI04", f"{key} still uses the draft meaning of ASI04"
 
 
 # ─── Tests de _analyze_tools_static ──────────────────────────
