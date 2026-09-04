@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import shutil
 import sqlite3
 import subprocess
@@ -243,7 +244,15 @@ def build_catalan(n_base):
 
 
 def write_corpus(seeds):
-    """One corpus, every locale, same vectors — the thing April did not have."""
+    """One corpus, every locale, same vectors — the thing April did not have.
+
+    Shuffled with a fixed seed. In corpus order the 38 Catalan seeds sit at the
+    very end, so a target killed at 90% would have attacked every locale except
+    the one the whole exercise is about. Shuffling makes any prefix of a run an
+    unbiased sample; fixing the seed keeps the order reproducible.
+    """
+    seeds = sorted(seeds, key=lambda s: s["id"])
+    random.Random(20260904).shuffle(seeds)
     CORPUS.write_text(json.dumps(seeds, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     by_locale = {}
     for s in seeds:
@@ -286,6 +295,14 @@ def target_config(name, model, think):
 
 
 def already_done(model, expected):
+    """Attacks this target has finished, or 0 after clearing a half-done one.
+
+    A target interrupted partway is re-run from the start, so its earlier rows
+    have to go — otherwise they sit in the database alongside the new ones and
+    every rate for that target is computed over a mix of duplicates. This used to
+    need a manual `rm` of the whole database, which threw away the targets that
+    had finished too.
+    """
     if not DB.exists():
         return 0
     con = sqlite3.connect(DB)
@@ -293,11 +310,19 @@ def already_done(model, expected):
         n = con.execute(
             "SELECT COUNT(*) FROM attacks a JOIN campaigns c ON c.id = a.campaign_id "
             "WHERE c.target_model = ? AND a.score >= 0", (model,)).fetchone()[0]
+        if n >= expected * 0.9:
+            return n
+        if n:
+            say(f"  {'':12s} clearing {n} rows from an interrupted run")
+            con.execute("DELETE FROM attacks WHERE campaign_id IN "
+                        "(SELECT id FROM campaigns WHERE target_model = ?)", (model,))
+            con.execute("DELETE FROM campaigns WHERE target_model = ?", (model,))
+            con.commit()
     except sqlite3.OperationalError:
         return 0
     finally:
         con.close()
-    return n if n >= expected * 0.9 else 0
+    return 0
 
 
 def main():
