@@ -232,3 +232,26 @@ class TestEvalCache:
             evaluate_with_llm("p", f"Refusal variant {i}", seed, model="m", provider="ollama")
 
         assert len(_eval_cache) <= MAX_CACHE_SIZE
+
+
+class TestSelfJudgingWarning:
+    """The default config used to point target and evaluator at the same model."""
+
+    def test_warns_when_judge_is_the_target(self, capsys):
+        from vigia.evaluator import warn_if_self_judging
+        cfg = {"target": {"model": "llama3.1:8b"}, "evaluator": {"model": "llama3.1:8b"}}
+        assert warn_if_self_judging(cfg) is True
+        assert "judge its own output" in capsys.readouterr().err
+
+    def test_silent_when_judge_differs(self, capsys):
+        from vigia.evaluator import warn_if_self_judging
+        cfg = {"target": {"model": "qwen3:8b"},
+               "evaluator": {"model": "anthropic/claude-haiku-4-5-20251001"}}
+        assert warn_if_self_judging(cfg) is False
+        assert capsys.readouterr().err == ""
+
+    def test_silent_on_incomplete_config(self, capsys):
+        from vigia.evaluator import warn_if_self_judging
+        assert warn_if_self_judging({}) is False
+        assert warn_if_self_judging({"target": {"model": "x"}}) is False
+        assert capsys.readouterr().err == ""

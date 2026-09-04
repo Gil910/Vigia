@@ -24,7 +24,7 @@ AGENT_REQUIRED = {"id", "vector", "category", "owasp_agentic", "language",
                   "prompt", "target_behavior", "severity"}
 DEAD_FIELDS = {"owasp_secondary", "legacy_id"}
 SEVERITIES = {"low", "medium", "high", "critical"}
-LOCALES = {"es-ES", "ca-ES", "eu-ES", "gl-ES", "es-EU", "es-GL", "en-US"}
+LOCALES = {"es-ES", "ca-ES", "eu-ES", "gl-ES", "es-CA", "es-EU", "es-GL", "en-US"}
 
 SEEDS = Path(__file__).parent.parent / "vigia/corpus/seeds"
 problems = []

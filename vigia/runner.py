@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import evaluate_with_llm
+from vigia.evaluator import evaluate_with_llm, warn_if_self_judging
 from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
 from vigia.prioritizer import prioritize_seeds
 from vigia.providers import token_stats
@@ -58,6 +58,7 @@ def run_campaign(config_path: str, corpus_path: str):
         target.setup()
 
     # Setup database
+    warn_if_self_judging(config)
     db_path = config["database"]["path"]
     conn = init_db(db_path)
     campaign_id = create_campaign(

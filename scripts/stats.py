@@ -43,13 +43,18 @@ print(f"{campaigns} campaigns, {total} attacks logged, {bad} errored, "
       f"**{total - bad} evaluated**. A leak is score >= {LEAK}, critical is >= {CRIT}.")
 
 table(
-    "By language",
-    f"""SELECT language, COUNT(*) n, SUM(score >= {LEAK}) v, AVG(score) avg
+    "By language, raw",
+    f"""SELECT language, COUNT(*) n, COUNT(DISTINCT seed_id) seeds,
+               COUNT(DISTINCT vector) vec, SUM(score >= {LEAK}) v, AVG(score) avg
         FROM attacks WHERE score >= 0 GROUP BY language ORDER BY 1.0*v/n DESC""",
-    lambda r: ("| Locale | Attacks | Leak rate | Avg score |",
-               "|---|---:|---:|---:|",
-               f"| {r['language']} | {r['n']} | {pct(r['v'], r['n'])} | {r['avg']:.1f} |"),
+    lambda r: ("| Locale | Attacks | Distinct seeds | Vectors | Leak rate | Avg score |",
+               "|---|---:|---:|---:|---:|---:|",
+               f"| {r['language']} | {r['n']} | {r['seeds']} | {r['vec']} | "
+               f"{pct(r['v'], r['n'])} | {r['avg']:.1f} |"),
 )
+print("\nRead the seed and vector columns before the rate column. A locale carrying")
+print("few distinct seeds over few vectors is not measuring a language, it is")
+print("measuring those seeds. Use the controlled table below to compare locales.")
 
 print("\n> The head-to-head below was judged by llama3.1:8b, which is also one of "
       "the four targets. Self-judging inflates the score (see docs/METHODOLOGY.md), "
@@ -135,6 +140,83 @@ for a, b, label in REPEATS:
     r2 = sum(sb[k] >= LEAK for k in common)
     print(f"| {label} | {pct(r1, len(common))} | {pct(r2, len(common))} | "
           f"{flips} / {len(common)} ({pct(flips, len(common))}) | {pct(same, len(common))} |")
+
+# ── Language comparison, controlled for attack vector ────────────────────────
+#
+# Raw per-locale rates are only comparable if every locale ran the same mix of
+# attacks. In the April 2026 corpus they did not: ca-ES carried 3 distinct seeds
+# over 2 vectors, 76 of its 80 attacks being a single V01 salary anchor, while
+# es-ES carried 63 seeds over 26. V01 is one of the strongest vectors, so Catalan
+# looked 24 points more vulnerable than Spanish when what was really being
+# compared was one strong attack against a broad mix.
+#
+# Averaging each locale's per-vector rate over the vectors they all share removes
+# the mix. A locale too thin to share enough vectors is dropped from the
+# comparison and named, rather than being given a number that looks like the
+# others but does not mean the same thing.
+MIN_PER_CELL = 10
+MIN_SHARED_VECTORS = 5
+
+cells = {}
+for r in rows(f"""SELECT language, vector, COUNT(*) n, SUM(score >= {LEAK}) v
+                  FROM attacks WHERE score >= 0 AND vector LIKE 'V%'
+                  GROUP BY language, vector"""):
+    cells[(r["language"], r["vector"])] = (r["n"], r["v"])
+
+all_vectors = sorted({k[1] for k in cells})
+
+
+def covered(loc):
+    return {v for v in all_vectors if cells.get((loc, v), (0, 0))[0] >= MIN_PER_CELL}
+
+
+coverage = {loc: covered(loc) for loc in sorted({k[0] for k in cells})}
+kept, dropped = dict(coverage), []
+while kept and len(set.intersection(*kept.values())) < MIN_SHARED_VECTORS and len(kept) > 2:
+    worst = min(kept, key=lambda loc: len(kept[loc]))
+    dropped.append((worst, len(kept[worst])))
+    del kept[worst]
+
+shared = sorted(set.intersection(*kept.values())) if kept else []
+
+print("\n### By language, controlled for attack vector\n")
+if dropped:
+    names = ", ".join(f"**{loc}** ({n} vector{'s' if n != 1 else ''})" for loc, n in dropped)
+    print(f"Left out of the comparison for want of coverage: {names}. A locale that")
+    print("only ran a couple of vectors cannot be compared against one that ran")
+    print("nineteen — its raw rate is a property of those particular seeds. Generate")
+    print("a balanced corpus with `vigia mutate` before quoting a rate for it.\n")
+
+if len(shared) < MIN_SHARED_VECTORS:
+    print(f"Not computable: even after that, only {len(shared)} vector(s) have "
+          f"{MIN_PER_CELL}+ attacks in every remaining locale. Do not compare "
+          f"locales from this database.")
+else:
+    plural = "s" if len(shared) != 1 else ""
+    print(f"Averaged over the {len(shared)} vector{plural} with {MIN_PER_CELL}+ attacks in "
+          f"each of {', '.join(sorted(kept))}. **This is the number to quote when "
+          f"comparing languages**, not the raw one.\n")
+    print("| Locale | Raw | Controlled | Delta |")
+    print("|---|---:|---:|---:|")
+    scored = []
+    for loc in kept:
+        tot = sum(n for (lo, _), (n, _v) in cells.items() if lo == loc)
+        hit = sum(v for (lo, _), (_n, v) in cells.items() if lo == loc)
+        ctrl = sum(100.0 * cells[(loc, vec)][1] / cells[(loc, vec)][0] for vec in shared) / len(shared)
+        scored.append((ctrl, loc, 100.0 * hit / tot))
+    for ctrl, loc, raw in sorted(scored, reverse=True):
+        print(f"| {loc} | {raw:.1f}% | **{ctrl:.1f}%** | {ctrl - raw:+.1f} |")
+
+    order = sorted(kept)
+    print("\n#### Per vector, per locale\n")
+    print("| Vector | " + " | ".join(order) + " |")
+    print("|---" * (len(order) + 1) + "|")
+    for vec in shared:
+        cs = [f"{100.0 * cells[(loc, vec)][1] / cells[(loc, vec)][0]:.0f}%" for loc in order]
+        print(f"| {vec} | " + " | ".join(cs) + " |")
+    print("\nThe spread across a row is the language effect for that attack. Where a")
+    print("row is flat, language did not matter; where it swings, it did. A single")
+    print("headline number across all vectors hides both.")
 
 print("\n### Verdicts served from the judge cache\n")
 print("Before v0.6.0 the cache keyed on the response text alone, so an attack could")

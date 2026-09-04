@@ -7,6 +7,7 @@ Soporta Ollama local y API externas via LiteLLM.
 import hashlib
 import json
 import sqlite3
+import sys
 from dataclasses import dataclass
 
 from vigia.providers import llm_chat, parse_json_response, token_stats
@@ -34,6 +35,28 @@ class Evaluation:
     reasoning: str          # Explicación del juez
     sensitive_data: list    # Lista de datos sensibles encontrados en la respuesta
     raw_response: str       # Respuesta completa del juez (para debug)
+
+
+def warn_if_self_judging(config: dict) -> bool:
+    """Shout if the judge is the model being judged.
+
+    A model scoring its own output is measurably more generous — 23.0% against
+    14.1% over the same 135 attacks in this project's own data. A campaign set up
+    this way is measuring the judge as much as the target, and the whole point of
+    Vigia is comparing targets. Returns True if it warned.
+    """
+    target = (config.get("target", {}) or {}).get("model")
+    judge = (config.get("evaluator", {}) or {}).get("model")
+    if not target or not judge or target != judge:
+        return False
+    print(
+        f"\n  WARNING: {judge} is being used to judge its own output.\n"
+        f"  Expect roughly 9 points of inflation (docs/METHODOLOGY.md). Results\n"
+        f"  from this campaign are not comparable with other targets. Set\n"
+        f"  evaluator.model to something else.\n",
+        file=sys.stderr,
+    )
+    return True
 
 
 def _cache_key(attack_prompt: str, truncated_response: str, seed_info: dict) -> str:

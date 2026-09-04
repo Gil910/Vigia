@@ -16,7 +16,7 @@ from datetime import datetime
 import yaml
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import evaluate_with_llm
+from vigia.evaluator import evaluate_with_llm, warn_if_self_judging
 from vigia.targets import create_target
 
 
@@ -199,6 +199,7 @@ def run_scan(
         target.setup()
 
     # Setup database
+    warn_if_self_judging(config)
     db_path = config.get("database", {}).get("path", "./results/vigia.db")
     conn = init_db(db_path)
     campaign_id = create_campaign(
