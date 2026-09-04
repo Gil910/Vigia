@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 import requests
 from rich.console import Console
 
+from vigia.providers import llm_chat
+
 console = Console()
 
 
@@ -37,6 +39,11 @@ class RAGTarget:
         self.embed_model = config["target"]["embed_model"]
         self.system_prompt = config["target"]["system_prompt"]
         self.temperature = config["target"].get("temperature", 0.3)
+        # A deployed corporate chatbot answers in a paragraph, not an essay, and
+        # nobody ships one that reasons out loud. Both defaults keep a campaign
+        # finite; override per target when the reasoning IS the experiment.
+        self.num_predict = config["target"].get("num_predict", 512)
+        self.think = config["target"].get("think")
         self.retriever_k = config["target"].get("retriever_k", 3)
         self.vectorstore = None
 
@@ -87,19 +94,21 @@ class RAGTarget:
             {"role": "user", "content": prompt}
         ]
 
+        # Routed through providers.llm_chat like everything else. It used to call
+        # ollama.chat directly with just (model, messages) — which silently threw
+        # away target.temperature, so every local target has been running at
+        # Ollama's default of 0.8 rather than the 0.3 its config asked for. That
+        # is more randomness than documented, and it feeds straight into the
+        # run-to-run variance in docs/METHODOLOGY.md.
         start = time.time()
-        if self.provider == "ollama":
-            import ollama
-            response = ollama.chat(model=self.model, messages=messages)
-            answer = response["message"]["content"]
-        elif self.provider == "litellm":
-            import litellm
-            response = litellm.completion(
-                model=self.model, messages=messages, temperature=self.temperature,
-            )
-            answer = response.choices[0].message.content
-        else:
-            raise ValueError(f"Provider no soportado: {self.provider}")
+        answer = llm_chat(
+            model=self.model,
+            messages=messages,
+            provider=self.provider,
+            temperature=self.temperature,
+            options={"num_predict": self.num_predict},
+            think=self.think,
+        )
 
         duration_ms = int((time.time() - start) * 1000)
         return {"response": answer, "chunks": chunks, "duration_ms": duration_ms}

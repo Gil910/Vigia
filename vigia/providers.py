@@ -83,6 +83,8 @@ def llm_chat(
     messages: list[dict],
     provider: str = "ollama",
     temperature: float = 0.3,
+    options: dict | None = None,
+    think: bool | None = None,
 ) -> str:
     """
     Envía mensajes a un LLM y devuelve el texto de respuesta.
@@ -92,6 +94,9 @@ def llm_chat(
         messages: Lista de mensajes [{"role": "system/user/assistant", "content": "..."}]
         provider: "ollama" para local, "litellm" para APIs externas
         temperature: Temperatura de generación (0.0-1.0)
+        options: opciones extra de Ollama; `num_predict` acota cuánto puede tardar
+            una sola respuesta. Ignorado con litellm.
+        think: desactiva el razonamiento en modelos híbridos. Ignorado con litellm.
 
     Returns:
         Texto de respuesta del modelo
@@ -101,21 +106,48 @@ def llm_chat(
         RuntimeError: Si litellm no está instalado o hay error de conexión
     """
     if provider == "ollama":
-        return _call_ollama(model, messages, temperature)
+        return _call_ollama(model, messages, temperature, options, think)
     elif provider == "litellm":
         return _call_litellm(model, messages, temperature)
     else:
         raise ValueError(f"Provider no soportado: {provider}. Usa 'ollama' o 'litellm'.")
 
 
-def _call_ollama(model: str, messages: list[dict], temperature: float) -> str:
-    """Llama al modelo via Ollama local."""
+def _call_ollama(
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    options: dict | None = None,
+    think: bool | None = None,
+) -> str:
+    """Llama al modelo via Ollama local.
+
+    `options` goes straight to Ollama; the one that matters is num_predict, which
+    bounds how long a single answer can take. Without it a hybrid reasoning model
+    like qwen3 will happily spend twenty minutes thinking about one question, and
+    a campaign of 233 seeds stops being something you can run overnight.
+
+    `think` switches reasoning off on models that support it. Worth doing when the
+    target is standing in for a customer-facing RAG chatbot, which is not a thing
+    anyone deploys with visible chain-of-thought — and worth leaving on when the
+    question is precisely what reasoning does to leakage.
+    """
     import ollama
-    response = ollama.chat(
-        model=model,
-        messages=messages,
-        options={"temperature": temperature},
-    )
+    opts = {"temperature": temperature}
+    if options:
+        opts.update(options)
+    kwargs = {"model": model, "messages": messages, "options": opts}
+    if think is not None:
+        kwargs["think"] = think
+    try:
+        response = ollama.chat(**kwargs)
+    except Exception as e:
+        # older models reject `think` outright; retry without it rather than
+        # failing an eight-hour campaign over one keyword
+        if think is None or "think" not in str(e).lower():
+            raise
+        kwargs.pop("think")
+        response = ollama.chat(**kwargs)
     content = response["message"]["content"]
     # Track tokens (Ollama returns actual counts in some versions)
     prompt_toks = response.get("prompt_eval_count", _estimate_tokens(

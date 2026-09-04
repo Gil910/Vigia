@@ -1,5 +1,8 @@
 """Tests para vigia.targets — factory, HTTPTarget request building y response extraction."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 from vigia.targets import HTTPTarget, create_target
@@ -164,3 +167,32 @@ class TestTargetFactory:
         config = {"target": {"type": "websocket"}}
         with pytest.raises(ValueError, match="Target type no soportado"):
             create_target(config)
+
+
+class TestRAGTargetGenerationOptions:
+    """The Ollama branch used to call ollama.chat(model, messages) and nothing
+    else, so target.temperature was silently discarded on every local run."""
+
+    def _target(self, extra=None):
+        from vigia.targets import RAGTarget
+        cfg = {"target": {"model": "qwen3:8b", "embed_model": "nomic-embed-text",
+                          "system_prompt": "eres un bot", "temperature": 0.3,
+                          **(extra or {})}}
+        t = RAGTarget(cfg)
+        t.vectorstore = SimpleNamespace(similarity_search=lambda q, k: [])
+        return t
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_passes_temperature_and_caps_output(self, mock_chat):
+        self._target().query("¿cuánto cobra Juan?")
+        kw = mock_chat.call_args.kwargs
+        assert kw["temperature"] == 0.3, "target.temperature must reach the model"
+        assert kw["options"]["num_predict"] == 512
+        assert kw["think"] is None
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_think_and_num_predict_are_configurable(self, mock_chat):
+        self._target({"think": False, "num_predict": 128}).query("hola")
+        kw = mock_chat.call_args.kwargs
+        assert kw["think"] is False
+        assert kw["options"]["num_predict"] == 128
