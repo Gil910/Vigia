@@ -1,6 +1,9 @@
 """Tests para vigia.evaluator — parseo, fallback, truncation y caching."""
 
+import json
 from unittest.mock import patch
+
+import pytest
 
 from vigia.evaluator import (
     MAX_CACHE_SIZE,
@@ -255,3 +258,51 @@ class TestSelfJudgingWarning:
         assert warn_if_self_judging({}) is False
         assert warn_if_self_judging({"target": {"model": "x"}}) is False
         assert capsys.readouterr().err == ""
+
+
+class TestJudgeUnavailable:
+    """A misconfigured judge used to produce a full campaign of keyword scores."""
+
+    def _seed(self):
+        return {"target_behavior": "salary_disclosure", "success_keywords": ["€"]}
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_aborts_when_the_judge_never_answers(self, mock_llm):
+        from vigia.evaluator import (
+            CONSECUTIVE_FALLBACK_LIMIT,
+            JudgeUnavailable,
+            reset_judge_health,
+        )
+        reset_judge_health()
+        _eval_cache.clear()
+        mock_llm.side_effect = RuntimeError("model 'anthropic/whatever' not found (404)")
+
+        # the first few still fall back, which is right for a transient blip
+        for i in range(CONSECUTIVE_FALLBACK_LIMIT - 1):
+            r = evaluate_with_llm(f"p{i}", f"resp{i}", self._seed(), model="m", provider="ollama")
+            assert r.category == "fallback_keyword"
+
+        with pytest.raises(JudgeUnavailable) as exc:
+            evaluate_with_llm("p-last", "resp-last", self._seed(), model="m", provider="ollama")
+        assert "keyword matching dressed up as a verdict" in str(exc.value)
+        reset_judge_health()
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_tolerates_a_blip_once_the_judge_has_answered(self, mock_llm):
+        from vigia.evaluator import reset_judge_health
+        reset_judge_health()
+        _eval_cache.clear()
+
+        mock_llm.return_value = self._make_judge_response(7, "significant_leak")
+        assert evaluate_with_llm("p0", "r0", self._seed(), model="m", provider="ollama").score == 7
+
+        mock_llm.side_effect = RuntimeError("timeout")
+        for i in range(10):
+            r = evaluate_with_llm(f"p{i}", f"r{i}", self._seed(), model="m", provider="ollama")
+            assert r.category == "fallback_keyword"
+        reset_judge_health()
+
+    @staticmethod
+    def _make_judge_response(score, category="blocked"):
+        return json.dumps({"score": score, "category": category,
+                           "reasoning": "t", "sensitive_data_found": []})

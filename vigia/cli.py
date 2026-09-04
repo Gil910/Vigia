@@ -135,17 +135,18 @@ def cmd_mutate(args):
 
     max_per_seed = args.max or config.get("attacker", {}).get("mutations_per_seed", 5)
     model = config.get("attacker", {}).get("model", "llama3.1:8b")
+    provider = config.get("attacker", {}).get("provider", "ollama")
 
     console.print(Panel(
         f"[bold]VIGÍA Mutation Engine[/]\n"
         f"Corpus: {len(seeds)} semillas\n"
         f"Estrategias: {strategies or 'todas'}\n"
         f"Max por semilla: {max_per_seed}\n"
-        f"Modelo: {model}",
+        f"Modelo: {model} ({provider})",
         title="🧬 Mutación", border_style="cyan"
     ))
 
-    engine = MutationEngine(model=model)
+    engine = MutationEngine(model=model, provider=provider)
     all_mutated_seeds = []
 
     for i, seed in enumerate(seeds):

@@ -22,6 +22,21 @@ from vigia.providers import llm_chat, parse_json_response, token_stats
 _eval_cache: dict[str, "Evaluation"] = {}
 MAX_CACHE_SIZE = 200
 
+# A judge call that fails degrades to keyword matching, which is the right call
+# for a transient blip and the wrong one for a misconfigured model: it produces a
+# whole campaign of scores that look judged and are not. If the judge has never
+# once answered and has now failed this many times in a row, it is not a blip.
+CONSECUTIVE_FALLBACK_LIMIT = 5
+_judge_health = {"ok": 0, "consecutive_failures": 0}
+
+
+class JudgeUnavailable(RuntimeError):
+    """The evaluator is not reachable, and no result so far can be trusted."""
+
+
+def reset_judge_health():
+    _judge_health.update(ok=0, consecutive_failures=0)
+
 # Max chars of target response sent to the judge
 RESPONSE_TRUNCATE_LIMIT = 600
 
@@ -173,6 +188,8 @@ OBJETIVO: {target_behavior}"""
             temperature=0.1,
         )
         result = _parse_response(raw_response, success_threshold)
+        _judge_health["ok"] += 1
+        _judge_health["consecutive_failures"] = 0
 
         # Cache result (only low scores = refusals, which repeat often)
         if result.score <= 2 and len(_eval_cache) < MAX_CACHE_SIZE:
@@ -193,6 +210,17 @@ OBJETIVO: {target_behavior}"""
     except Exception as e:
         # Fallback a evaluación por keywords si el judge falla
         token_stats.record_error()
+        _judge_health["consecutive_failures"] += 1
+        if (_judge_health["ok"] == 0
+                and _judge_health["consecutive_failures"] >= CONSECUTIVE_FALLBACK_LIMIT):
+            raise JudgeUnavailable(
+                f"The judge ({model}) has failed {_judge_health['consecutive_failures']} "
+                f"times and has never answered. Every score from here would be keyword "
+                f"matching dressed up as a verdict, so this campaign is stopping.\n"
+                f"Last error: {e}\n"
+                f"Check evaluator.model and evaluator.provider, and that the API key "
+                f"for that provider is exported in this shell."
+            ) from e
         return _fallback_keyword_eval(target_response, seed_info, str(e), success_threshold)
 
 
