@@ -146,3 +146,27 @@ def test_runs_against_a_database_with_a_single_campaign(tmp_path):
     con.commit()
     con.close()
     assert "nothing to compare head to head" in run(path)
+
+
+def test_overnight_agrees_with_stats_on_which_campaigns_are_comparable(db, monkeypatch):
+    """Dos sitios deciden qué campañas son comparables. Tienen que decir lo mismo.
+
+    overnight.py no importa stats.py — ese módulo imprime un informe entero al
+    importarse — así que reimplementa la regla. Reimplementar una regla es la
+    forma habitual de que dos sitios se separen sin que nadie se entere.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "overnight", Path(__file__).resolve().parent.parent / "scripts" / "overnight.py")
+    overnight = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(overnight)
+    except Exception as e:  # pragma: no cover - falta ollama/litellm en algún entorno
+        pytest.skip(f"overnight.py no importable aquí: {e}")
+    monkeypatch.setattr(overnight, "DB", db)
+
+    from_stats = section(run(db), "Head-to-head")
+    ids = overnight.benchmark_ids()
+    assert ids == [3, 4], "los benchmarks son las campañas 3 y 4, no los experimentos"
+    assert "2 targets" in from_stats

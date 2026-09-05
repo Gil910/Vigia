@@ -12,6 +12,8 @@ from vigia.evaluator import (
     _fallback_keyword_eval,
     _parse_response,
     evaluate_with_llm,
+    split_thinking,
+    trim_for_judge,
 )
 
 
@@ -175,6 +177,38 @@ class TestEvalCache:
         assert "[cached]" in r2.reasoning
 
     @patch("vigia.evaluator.llm_chat")
+    def test_cache_miss_on_different_judge(self, mock_llm):
+        """Changing the judge has to re-ask, or a judge comparison measures nothing.
+
+        The persistent cache is documented as cross-campaign, so a second campaign
+        over the same responses under a different judge would read back the first
+        judge's verdicts and record them as the new judge's. That is exactly the
+        experiment the cache would be silently answering for.
+        """
+        mock_llm.return_value = self._make_judge_response(1)
+        response = "No puedo ayudarte con eso."
+        seed = {"target_behavior": "test"}
+
+        evaluate_with_llm("p", response, seed, model="haiku", provider="litellm")
+        assert mock_llm.call_count == 1
+
+        evaluate_with_llm("p", response, seed, model="llama3.1:8b", provider="ollama")
+        assert mock_llm.call_count == 2, "a different judge must be asked again"
+
+        # ...and the same judge is still cached
+        r = evaluate_with_llm("p", response, seed, model="haiku", provider="litellm")
+        assert mock_llm.call_count == 2
+        assert "[cached]" in r.reasoning
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_cache_miss_on_different_provider_same_model_name(self, mock_llm):
+        """Same name on two providers is not the same judge."""
+        mock_llm.return_value = self._make_judge_response(0)
+        evaluate_with_llm("p", "r", {"target_behavior": "t"}, model="m", provider="ollama")
+        evaluate_with_llm("p", "r", {"target_behavior": "t"}, model="m", provider="litellm")
+        assert mock_llm.call_count == 2
+
+    @patch("vigia.evaluator.llm_chat")
     def test_cache_miss_on_different_prompt(self, mock_llm):
         """Same response text off a different prompt is a different question.
 
@@ -306,3 +340,47 @@ class TestJudgeUnavailable:
     def _make_judge_response(score, category="blocked"):
         return json.dumps({"score": score, "category": category,
                            "reasoning": "t", "sensitive_data_found": []})
+
+
+class TestReasoningAwareTrimming:
+    """El juez tiene una ventana de 600 caracteres y el razonamiento va primero.
+
+    Con `capture_thinking` la respuesta llega como <thinking>…</thinking> seguido
+    de la contestación real. Truncar por la cabeza se gasta la ventana en el
+    modelo hablando consigo mismo y tira justo lo que ve el usuario, así que el
+    juez puntuaría la deliberación y lo registraría como veredicto de la
+    respuesta.
+    """
+
+    def test_response_without_reasoning_is_unchanged(self):
+        assert trim_for_judge("hola") == "hola"
+
+    def test_plain_response_still_truncates_at_the_limit(self):
+        out = trim_for_judge("x" * (RESPONSE_TRUNCATE_LIMIT + 50))
+        assert out.startswith("x" * RESPONSE_TRUNCATE_LIMIT)
+        assert "truncado" in out
+
+    def test_long_reasoning_does_not_push_out_the_answer(self):
+        answer = "El salario de Juan Pérez es 52.000 € brutos."
+        resp = f"<thinking>\n{'r' * 5000}\n</thinking>\n\n{answer}"
+        out = trim_for_judge(resp)
+        assert answer in out, "la respuesta al usuario nunca puede caerse"
+        assert "truncado" in out, "el razonamiento sí se recorta"
+
+    def test_both_parts_are_labelled_for_the_judge(self):
+        out = trim_for_judge("<thinking>\nvoy a mirarlo\n</thinking>\n\nno puedo")
+        assert "<razonamiento interno>" in out
+        assert "<respuesta al usuario>" in out
+
+    def test_split_returns_reasoning_and_answer(self):
+        r, a = split_thinking("<thinking>\n  pienso  \n</thinking>\n\nrespondo")
+        assert r == "pienso"
+        assert a == "respondo"
+
+    def test_split_on_a_plain_response(self):
+        assert split_thinking("respondo") == ("", "respondo")
+
+    def test_split_tolerates_an_empty_answer(self):
+        r, a = split_thinking("<thinking>\nsolo pienso\n</thinking>")
+        assert r == "solo pienso"
+        assert a == ""

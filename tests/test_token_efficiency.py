@@ -168,7 +168,8 @@ class TestPersistentEvalCache:
         # Pre-populate DB cache
         from vigia.evaluator import _cache_key
         response = "No puedo ayudarte."
-        cache_key = _cache_key("attack", response[:600], {"target_behavior": "test"})
+        cache_key = _cache_key("attack", response[:600], {"target_behavior": "test"},
+                               "m", "ollama")
         cache_eval_store(conn, cache_key, 0, "blocked", "test", [])
 
         result = evaluate_with_llm(
@@ -197,7 +198,8 @@ class TestPersistentEvalCache:
 
         # Check it was persisted
         from vigia.evaluator import _cache_key
-        cache_key = _cache_key("attack", "No puedo.", {"target_behavior": "test"})
+        cache_key = _cache_key("attack", "No puedo.", {"target_behavior": "test"},
+                               "m", "ollama")
         stored = cache_eval_lookup(conn, cache_key)
         assert stored is not None
         assert stored["score"] == 1
