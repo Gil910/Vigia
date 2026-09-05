@@ -196,3 +196,28 @@ class TestRAGTargetGenerationOptions:
         kw = mock_chat.call_args.kwargs
         assert kw["think"] is False
         assert kw["options"]["num_predict"] == 128
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_capture_thinking_reaches_the_provider(self, mock_chat):
+        """The knob was read from the config and then dropped on the floor.
+
+        RAGTarget stored self.capture_thinking and never passed it on, so a
+        campaign configured to feed the reasoning block to the judge ran for
+        three hours and scored final answers, same as always. The config looked
+        right, the database recorded it as right, and nothing failed.
+        """
+        self._target({"think": True, "capture_thinking": True}).query("hola")
+        assert mock_chat.call_args.kwargs["capture_thinking"] is True
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_every_target_knob_is_forwarded(self, mock_chat):
+        """Guards the whole set, so the next knob added cannot go missing quietly."""
+        t = self._target({"think": True, "capture_thinking": True, "num_predict": 64})
+        t.query("hola")
+        kw = mock_chat.call_args.kwargs
+        forwarded = {"model": kw["model"], "provider": kw["provider"],
+                     "temperature": kw["temperature"], "think": kw["think"],
+                     "capture_thinking": kw["capture_thinking"],
+                     "num_predict": kw["options"]["num_predict"]}
+        for knob, value in forwarded.items():
+            assert getattr(t, knob) == value, f"{knob} does not reach llm_chat"

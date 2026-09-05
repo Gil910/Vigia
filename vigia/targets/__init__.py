@@ -109,6 +109,7 @@ class RAGTarget:
             temperature=self.temperature,
             options={"num_predict": self.num_predict},
             think=self.think,
+            capture_thinking=self.capture_thinking,
         )
 
         duration_ms = int((time.time() - start) * 1000)
