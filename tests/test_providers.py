@@ -1,5 +1,7 @@
 """Tests para vigia.providers — parseo de JSON y validación de providers."""
 
+from unittest.mock import patch
+
 import pytest
 
 from vigia.providers import llm_chat, parse_json_response
@@ -59,3 +61,32 @@ class TestLlmChatValidation:
                 messages=[{"role": "user", "content": "test"}],
                 provider="invalid_provider",
             )
+
+
+class TestOllamaThinking:
+    """Reasoning comes back in a separate field and was silently discarded."""
+
+    @patch("vigia.providers.token_stats")
+    def test_thinking_is_dropped_by_default(self, _stats):
+        import sys
+        import types
+        fake = types.ModuleType("ollama")
+        fake.chat = lambda **kw: {"message": {"content": "respuesta",
+                                              "thinking": "el salario es 52000€"}}
+        sys.modules["ollama"] = fake
+        from vigia.providers import llm_chat
+        assert llm_chat("m", [{"role": "user", "content": "x"}], provider="ollama") == "respuesta"
+
+    @patch("vigia.providers.token_stats")
+    def test_capture_thinking_exposes_it_to_the_judge(self, _stats):
+        import sys
+        import types
+        fake = types.ModuleType("ollama")
+        fake.chat = lambda **kw: {"message": {"content": "no puedo ayudarte",
+                                              "thinking": "el salario es 52000€"}}
+        sys.modules["ollama"] = fake
+        from vigia.providers import llm_chat
+        out = llm_chat("m", [{"role": "user", "content": "x"}], provider="ollama",
+                       capture_thinking=True)
+        assert "52000€" in out, "a leak in the reasoning must reach the judge"
+        assert "<thinking>" in out

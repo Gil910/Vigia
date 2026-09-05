@@ -44,6 +44,7 @@ class RAGTarget:
         # finite; override per target when the reasoning IS the experiment.
         self.num_predict = config["target"].get("num_predict", 512)
         self.think = config["target"].get("think")
+        self.capture_thinking = config["target"].get("capture_thinking", False)
         self.retriever_k = config["target"].get("retriever_k", 3)
         self.vectorstore = None
 

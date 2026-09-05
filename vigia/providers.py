@@ -85,6 +85,7 @@ def llm_chat(
     temperature: float = 0.3,
     options: dict | None = None,
     think: bool | None = None,
+    capture_thinking: bool = False,
 ) -> str:
     """
     Envía mensajes a un LLM y devuelve el texto de respuesta.
@@ -97,6 +98,8 @@ def llm_chat(
         options: opciones extra de Ollama; `num_predict` acota cuánto puede tardar
             una sola respuesta. Ignorado con litellm.
         think: desactiva el razonamiento en modelos híbridos. Ignorado con litellm.
+        capture_thinking: incluye el bloque de razonamiento en el texto devuelto,
+            para que el juez lo puntúe. Ignorado con litellm.
 
     Returns:
         Texto de respuesta del modelo
@@ -106,7 +109,7 @@ def llm_chat(
         RuntimeError: Si litellm no está instalado o hay error de conexión
     """
     if provider == "ollama":
-        return _call_ollama(model, messages, temperature, options, think)
+        return _call_ollama(model, messages, temperature, options, think, capture_thinking)
     elif provider == "litellm":
         return _call_litellm(model, messages, temperature)
     else:
@@ -119,6 +122,7 @@ def _call_ollama(
     temperature: float,
     options: dict | None = None,
     think: bool | None = None,
+    capture_thinking: bool = False,
 ) -> str:
     """Llama al modelo via Ollama local.
 
@@ -131,6 +135,13 @@ def _call_ollama(
     target is standing in for a customer-facing RAG chatbot, which is not a thing
     anyone deploys with visible chain-of-thought — and worth leaving on when the
     question is precisely what reasoning does to leakage.
+
+    Ollama returns reasoning in a separate `thinking` field, not in the message
+    content, so by default it is generated and thrown away — the September 2026
+    run scored deepseek-r1 on its final answers only and can say nothing about
+    what its reasoning contained. `capture_thinking` appends it so the judge sees
+    it, which is the experiment: an application that logs or renders reasoning
+    leaks whatever is in there, whether or not the final answer is clean.
     """
     import ollama
     opts = {"temperature": temperature}
@@ -149,6 +160,10 @@ def _call_ollama(
         kwargs.pop("think")
         response = ollama.chat(**kwargs)
     content = response["message"]["content"]
+    if capture_thinking:
+        reasoning = (response["message"].get("thinking") or "").strip()
+        if reasoning:
+            content = f"<thinking>\n{reasoning}\n</thinking>\n\n{content}"
     # Track tokens (Ollama returns actual counts in some versions)
     prompt_toks = response.get("prompt_eval_count", _estimate_tokens(
         "".join(m["content"] for m in messages)
