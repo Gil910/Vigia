@@ -52,7 +52,7 @@ def campaigns():
         except (ValueError, TypeError):
             judge = None
         out[c["id"]] = {"target": c["target_model"], "judge": judge,
-                        "seeds": seeds, "name": c["name"]}
+                        "seeds": seeds, "name": c["name"], "config": c["config"]}
     return out
 
 
@@ -173,8 +173,11 @@ print("\nSorted by sample size, not by rate. The bottom rows are three runs each
 def matched_pairs(same_judge):
     """Campaign pairs against one target over identical seeds.
 
-    same_judge=False finds the judge-bias experiment (one variable: the judge).
-    same_judge=True finds a repeat of the same configuration.
+    same_judge=False finds the judge-bias experiment: one variable, the judge.
+    same_judge=True finds a true repeat, which means the whole config matches —
+    not merely the judge. Two campaigns can share a judge and still differ in
+    something that matters, and calling that "run-to-run variance" would blame
+    the model for a change you made.
     """
     found = {}
     ids = sorted(CAMPAIGNS)
@@ -183,7 +186,10 @@ def matched_pairs(same_judge):
             ca, cb = CAMPAIGNS[a], CAMPAIGNS[b]
             if ca["target"] != cb["target"] or ca["seeds"] != cb["seeds"]:
                 continue
-            if (ca["judge"] == cb["judge"]) != same_judge:
+            if same_judge:
+                if ca["config"] != cb["config"]:
+                    continue
+            elif ca["judge"] == cb["judge"] or ca["config"] is None:
                 continue
             # one pair per target: the widest one, since a 135-seed comparison
             # settles the question and an 11-seed one only gestures at it
