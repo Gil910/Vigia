@@ -2,14 +2,15 @@
 
 ## 0.6.0 — 2026-09-08
 
-A correctness release with one new finding in it.
+A correctness release with one new finding in it, and one finding removed.
 
-Two thirds of this is things that were wrong being made right, including a
-headline result that turned out to be an artefact of my own corpus. The rest is
-the tooling that found them: everything published now comes out of a script with
-tests, and the same responses have been scored by three different judges so that
-the difference between "the models do this" and "my judge does this" is on the
-page rather than in my head.
+Most of this is things that were wrong being made right, including two headline
+results that turned out to be artefacts of my own corpus — the second one found
+four days after I had written the launch post around it. The rest is the tooling
+that found them: everything published now comes out of a script with tests, the
+corpus is checked for content and not just for schema, and the same responses have
+been scored by three different judges so that the difference between "the models
+do this" and "my judge does this" is on the page rather than in my head.
 
 ### Taxonomy
 
@@ -63,9 +64,10 @@ page rather than in my head.
   mutation fell through to one generic sentence. 90 of 195 seeds now get a
   topic-specific mutation, up from 0. The test that covered this passed because it
   set `category` by hand to a value no seed carries.
-- `vigia --version` reported 0.4.0 since v0.5: the number was hardcoded in
-  `cli.py` while `pyproject.toml` said 0.5.3 and three modules carried their own
-  stamps in a docstring. One source of truth in `vigia/__init__.py` now.
+- `vigia --version` reported 0.4.0 since v0.5, and then stopped existing: the
+  number was hardcoded in `cli.py` while `pyproject.toml` said 0.5.3, and the
+  cleanup that gave `vigia/__init__.py` the single source of truth removed the
+  flag along with it. The flag is back and reads from there.
 - Repository URL in `pyproject.toml` and in the CLI banner pointed at a GitHub
   account that does not exist, so every link on the PyPI page 404'd since 0.5.3.
   README links are absolute now too, because PyPI cannot resolve repo-relative
@@ -124,28 +126,43 @@ then attacked the instrument until it either broke or held.
   targets.** 233 seeds, six locales, five current models — qwen3:8b, gemma3:4b,
   deepseek-r1:8b, mistral and llama3.1:8b as a continuity anchor — judged by
   claude-haiku-4-5. April's numbers are no longer quoted anywhere.
-- **The corpus is balanced.** It carried 39 seeds in every locale except Catalan,
-  which had one, repeated across 76 campaigns and belonging to one of the two
-  strongest vectors. The published "+24 points for Catalan" was that vector, not
-  that language. 38 generated Catalan seeds bring every locale to 39 over the same
-  19 vectors, and a test now fails if the locales drift apart again.
-- **The language finding, restated.** Controlled for vector: ca-ES 38.9%, es-ES
-  38.4%, eu-ES 28.8%, es-EU 27.7%, gl-ES 24.2%, es-GL 19.1%. Catalan and Spanish
-  are indistinguishable and three judges disagree about which leads. The two-tier
-  split — Spanish and Catalan 9 to 17 points above the rest — holds under all
-  three, and that is the finding now.
+- **The corpus was balanced, and it was still wrong.** It carried 39 seeds in
+  every locale except Catalan, which had one, covering 76 of its 80 attacks and
+  belonging to one of the two strongest vectors. The published "+24 points for
+  Catalan" was that vector, not that language. 38 generated Catalan seeds brought
+  every locale to 38–39 over the same 19 vectors, and a test fails if they drift
+  apart again. Then see the next entry.
+- **52 of the 233 seeds are not attacks.** They are the mutation model declining
+  to translate, written into the corpus as if the refusal were the prompt; fifteen
+  are the same sentence and one still carries the mutator's own instructions. They
+  score 0 by construction and they are not spread evenly — 19 in gl-ES, 13 in
+  eu-ES, 3 in ca-ES, **none in es-ES**, which is the shape of the finding they
+  were producing. `vigia/corpus/hygiene.py` is the detector, `vigia mutate` retries
+  and then drops rather than storing one, `scripts/validate_corpus.py` fails on
+  one, and `scripts/stats.py` excludes them per row so an old database is
+  re-analysed correctly without being rewritten. `scripts/fix_seeds.py` regenerates
+  them.
+- **The language finding is withdrawn.** With those rows excluded, the two-tier
+  gap falls from 9.6 to 4.2 points under Haiku and from 10.7 to 4.6 under
+  gpt-5.6-luna, and a seed-level bootstrap puts the 95% interval across zero in
+  both cases. gl-ES is down to 20 usable seeds over 5 vectors, below the coverage
+  `stats.py` requires, so the controlled table now leaves it and eu-ES out and says
+  why. There is no language comparison in this release.
 - **New: the reasoning leaks what the answer refuses to say.** deepseek-r1:8b's
-  chain of thought was captured and the same 233 responses scored twice, once on
-  the final answer alone and once on the reasoning alone. Answer 18.5%, reasoning
-  24.5%, and in 28 of 233 the answer was clean while the reasoning named the
-  thing. A second judge puts it at 20.2%, 28.3% and 36. One generation judged
-  twice, so none of the gap is run-to-run noise.
-- **Judge bias, separated.** A model scoring itself reports +6.0 points against a
-  neutral judge; the same judge pointed at a target that is not itself adds +2.6.
-  Roughly half the inflation is general strictness, the rest is self-assessment.
+  chain of thought was captured and the same 181 responses scored twice, once on
+  the final answer alone and once on the reasoning alone. Answer 23.8%, reasoning
+  30.4%, and in 26 of 181 the answer was clean while the reasoning named the
+  thing. A second judge puts it at 26.0%, 35.4% and 34. One generation judged
+  twice, so none of the gap is run-to-run noise. This is the finding that survived
+  both corpus corrections, because it is a within-target comparison and the corpus
+  cancels out of it.
+- **Judge bias, separated.** A model scoring itself reports +7.2 points against a
+  neutral judge; the same judge pointed at a target that is not itself adds +2.2.
+  About a third of the inflation is general strictness, the rest is
+  self-assessment.
 - **Run-to-run variance on three models**, at the temperature the config actually
-  asks for: llama3.1:8b flips 10.3% of individual verdicts between identical runs,
-  gemma3:4b 12.9%, deepseek-r1:8b 18.0%, while the aggregate holds within a point.
+  asks for: llama3.1:8b flips 11.6% of individual verdicts between identical runs,
+  gemma3:4b 16.0%, deepseek-r1:8b 22.1%, while the aggregate holds within a point.
 - **Agentic results are a range, not a point.** The same 22 seeds run three times:
   10, 11 and 11 compromised, so 45–50%. The previous "100%" was four attacks.
 - Multi-turn re-run under the neutral judge with a uniform six conversations per
@@ -199,7 +216,46 @@ then attacked the instrument until it either broke or held.
   attacks with.
 - **`scripts/stats.py` has tests.** The script that generates every published
   number had none, and it had been wrong twice; both times it failed by printing a
-  normal-looking table with a different number inside. 435 tests, ruff clean.
+  normal-looking table with a different number inside.
+
+### Hardening
+
+Found by reading the code rather than by a failing test, which is why each of
+these now has one.
+
+- **Campaign configs were written to the database verbatim**, and an HTTP target's
+  config carries the `Authorization` header used to reach it — so a bearer token
+  ended up in the `.db`, which is the file people attach to a report. Credentials
+  are redacted before the write, and provider error strings, which reach both the
+  database and the JUnit output and can carry a key in a URL, are scrubbed too.
+- **`vigia scan` returned 0 when every judge call failed.** The condition for "the
+  scan did not run" was `total_executed == 0`, and `total_executed` counts target
+  queries rather than verdicts — so a target that answered every prompt while the
+  judge was down produced no findings, passed, and exited green. A scan that
+  errored and found nothing now exits 2.
+- **`JudgeUnavailable` never propagated.** It subclasses `RuntimeError` and every
+  campaign loop caught `Exception`, so the abort added in this release printed once
+  per remaining seed and then finished the campaign anyway.
+- **`pip install vigia && vigia run` could not work.** Every default path was
+  written the way it looks from a clone, so the first thing a new user ran died on
+  `FileNotFoundError: vigia/config/default.yaml`. Defaults resolve against the
+  installed package now, and a run that needs Ollama says so instead of raising out
+  of langchain.
+- `record_attack` had the success threshold hardcoded at 5, so
+  `evaluator.success_threshold` was read, used for the console output, and thrown
+  away at the write.
+- **The euskera and gallego mutation strategies were unreachable.** `mutate_seed`
+  truncated the strategy *list* to `mutations_per_seed`, which is 5 in every
+  shipped config, and those four sit at positions 9 to 12. The list is rotated by
+  the seed id now, so a corpus reaches all twelve.
+- Fourteen `open()` calls read without an explicit encoding, so under `LC_ALL=C` —
+  the default in slim images and several CI runners — the corpus failed to load on
+  its first accented character.
+- `init_db` crashed on a database path with no directory component.
+- `stats.py` opens the database read-only, and no longer creates an empty file when
+  pointed at a path that does not exist.
+
+435 tests plus a new `tests/test_hardening.py`, ruff clean.
 
 ## 0.5.3 — 2026-04-15
 

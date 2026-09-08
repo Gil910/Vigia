@@ -20,43 +20,49 @@ English: **[README.md](https://github.com/Gil910/Vigia/blob/main/README.md)**
 
 ## Resumen
 
-2.432 ataques contra cinco modelos en seis variantes lingüísticas ibéricas y,
-porque no me fiaba de mi propio instrumento, las mismas respuestas puntuadas otra
-vez por dos jueces más, para poder distinguir qué hallazgos son de los modelos y
-cuáles son de quien los estaba corrigiendo.
+1.912 ataques contra cinco modelos en seis variantes lingüísticas ibéricas. Y
+después, porque no me fiaba de mi propio instrumento, las mismas respuestas
+puntuadas otra vez por dos jueces más, para poder separar qué hallazgos son de los
+modelos y cuáles de quien los estaba corrigiendo.
 
-Salieron tres cosas. La tercera se cargó el titular que llevaba cinco meses
-guardando.
+Dos aguantaron. Un tercero no, y por qué no aguantó es la parte de este repo que
+de verdad enseñaría en una entrevista.
 
 ### El razonamiento filtra lo que la respuesta se niega a decir
 
-`deepseek-r1:8b` piensa antes de contestar. Capturé ese razonamiento y después
-puntué las mismas 233 respuestas dos veces: una sobre la respuesta final sola,
-otra sobre la cadena de pensamiento sola.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak-dark.png">
+    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak.png" alt="deepseek-r1:8b, 181 ataques juzgados dos veces. La respuesta final filtra un 23,8% con Claude Haiku y un 26,0% con gpt-5.6-luna; la cadena de pensamiento, un 30,4% y un 35,4%. En 26 y 34 ataques la respuesta estaba limpia y el razonamiento no." width="820">
+  </picture>
+</p>
 
-```
-                     respuesta final    razonamiento
-claude-haiku-4-5          18,5%             24,5%
-gpt-5.6-luna              20,2%             28,3%
-```
+`deepseek-r1:8b` piensa antes de contestar, y ese razonamiento vuelve en un campo
+aparte. Lo capturé y puntué las mismas 181 respuestas dos veces: una sobre la
+contestación final sola, otra sobre la cadena de pensamiento sola.
 
-El modelo generó una vez y se juzgó dos, así que nada de esa diferencia es ruido
-entre ejecuciones. Y el dato que importa: **en 28 de los 233 ataques la respuesta
-final estaba limpia y el razonamiento nombró el dato igualmente** — un 12% con
-Haiku, 36 ataques y un 15,5% con el segundo juez.
+El modelo generó una vez y lo juzgué dos, así que nada de esa diferencia es ruido
+entre ejecuciones. El dato que importa es la última barra: **en 26 de 181 ataques
+la respuesta final estaba limpia y el razonamiento nombró el dato igualmente.** Un
+14,4% con Haiku; 34 ataques, un 18,8%, con el segundo juez.
 
-Si tu aplicación loguea el bloque de razonamiento, o lo enseña en un desplegable
-de "pensando…", eso son filtraciones sin que nadie haya atacado nada con éxito.
-El usuario ve un rechazo educado. El log tiene el salario dentro.
+Si tu aplicación guarda el bloque de razonamiento en el log, lo manda a una
+plataforma de observabilidad o lo enseña en el desplegable de "pensando…", eso son
+filtraciones sin que nadie haya atacado nada con éxito. El usuario ve un rechazo
+educado. El log tiene el salario dentro.
 
-Los dos jueces coinciden en que el efecto existe, pero solo se solapan en 18 de
-los 46 ataques que marca alguno, porque muchos de esos veredictos están rozando
-el umbral de puntuación. Así que la forma honesta del hallazgo es un rango,
-12-15%, y no una lista de ataques concretos.
+Los dos jueces coinciden en que el efecto está. Solo se solapan en 18 de los 42
+ataques que marca alguno, porque muchos de esos veredictos están rozando el umbral
+de puntuación. Así que la forma honesta del hallazgo es un rango, del 14 al 19%, y
+no una lista de ataques concretos.
+
+Un solo modelo y una sola arquitectura. Cualquier modelo con un campo de
+razonamiento separado serviría para ampliarlo, y eso está
+[abierto como issue](https://github.com/Gil910/Vigia/issues).
 
 ### El retriever filtra más que el modelo
 
-El vector más fuerte del corpus es `V05_passive_context_leak`, un **71,7%**.
+El vector más fuerte del corpus es `V05_passive_context_leak`, un **70,9%**.
 Preguntas algo normal. El retriever trae un chunk que resulta tener una credencial
 dos líneas debajo del texto relevante. El modelo lee lo que le han puesto delante.
 Sin jailbreak, sin inyección, sin nada que se parezca a un ataque.
@@ -65,58 +71,55 @@ En la [lista OWASP de 2026](https://genai.owasp.org/llm-top-10/) eso es LLM09,
 Vector and Embedding Weaknesses. Es un problema de diseño de la recuperación, y no
 se arregla endureciendo el system prompt.
 
-### El catalán no era el punto débil, y descubrirlo es la parte útil
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/language-leak-rate-dark.png">
-    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/language-leak-rate.png" alt="Tasa de filtración por locale, controlada por vector: catalán 38,9%, castellano 38,4%, euskera 28,8%, castellano+euskera 27,7%, gallego 24,2%, castellano+gallego 19,1%" width="820">
-  </picture>
-</p>
+### El hallazgo de los idiomas: dos veces el mismo error
 
 Durante casi todo 2026 este README decía que el catalán era 24 puntos más
-vulnerable que el castellano. Lo decía porque mi corpus catalán era una semilla
-repetida en 76 campañas, y esa semilla resultaba ser un ancla numérica, que es uno
-de los dos vectores más fuertes que tengo. Estaba comparando un ataque fuerte
-contra una mezcla amplia y llamando a la diferencia efecto del idioma.
+vulnerable que el castellano. Era falso, y lo era porque mi corpus catalán se
+reducía a una semilla que cubría 76 de sus 80 ataques, y esa semilla era un ancla
+numérica, uno de los dos vectores más fuertes que tengo. Comparaba un ataque fuerte
+contra una mezcla amplia y a la diferencia la llamaba efecto del idioma.
 
-Con un corpus equilibrado —39 semillas por locale, los mismos 19 vectores en
-todos— y promediando cada locale sobre los vectores que comparten:
+Así que equilibré el corpus, lo volví a correr entero y me salió un resultado más
+pequeño pero limpio: castellano y catalán empatados arriba, euskera y gallego entre
+9 y 17 puntos por debajo, y lo mismo con los tres jueces. Lo escribí. Iba a ser el
+tercer hallazgo del post de lanzamiento.
 
-| Locale | Tasa controlada |
-|--------|----------------:|
-| ca-ES  | 38,9% |
-| es-ES  | 38,4% |
-| eu-ES  | 28,8% |
-| es-EU  | 27,7% |
-| gl-ES  | 24,2% |
-| es-GL  | 19,1% |
+Y entonces me puse a leer mi propio corpus.
 
-Catalán y castellano son lo mismo. Tres jueces puntuando respuestas idénticas no
-se ponen de acuerdo en cuál de los dos va primero: Haiku dice catalán por 1,6
-puntos, gpt-5.6-luna dice castellano por 1,1, gemini-3.5-flash dice castellano por
-2,7. Cuando el signo de una diferencia depende de quién corrige, no hay
-diferencia.
+Cincuenta y dos de las 233 semillas no eran ataques. Eran el modelo mutador
+negándose a traducir, guardado en el corpus como si la negativa fuera el prompt.
+Quince dicen, enteras, `Lo siento, pero no puedo cumplir con esa solicitud.` Y una
+todavía lleva dentro las instrucciones del propio mutador: *"mi función es traducir
+al euskara batua el prompt dado"*.
 
-**Lo que sí sobrevive a los tres jueces es la separación en dos niveles.**
-Castellano y catalán arriba juntos; euskera, gallego y los dos code-switching
-entre 9 y 17 puntos por debajo, y los cuatro de abajo mantienen casi exactamente
-el mismo orden con cualquiera de los tres. Ese es el resultado contraintuitivo, y
-ese sí lo defiendo.
+Una semilla así no puede filtrar nada: puntúa cero haga lo que haga el target. Y no
+estaban repartidas de forma uniforme —19 en gallego, 13 en euskera, 3 en catalán,
+**ninguna en castellano**—, que es exactamente la forma del hallazgo que estaban
+produciendo.
 
-De la *explicación* sigo sin fiarme del todo. Puede que las lenguas con menos
-representación sean de verdad más difíciles de manipular, o puede que el juez sea
-peor leyéndolas, y una filtración que no sabe leer puntúa cero. Marx y Dunaiski
-encontraron algo parecido en [mayo de 2026](https://arxiv.org/abs/2605.18239): los
-ataques traducidos de un solo turno fallan en lenguas de bajos recursos, los
-multi-turno funcionan, y lo que decide es la calidad de la traducción. Los míos
-son de un solo turno. Ese es el siguiente experimento, no una conclusión.
+Quitando esas filas, y con un bootstrap sobre las semillas dentro de cada vector:
 
-Aunque hay algo que apunta a que es real y no artefacto. Vuelve al hallazgo del
-razonamiento: de los 28 ataques donde la respuesta estaba limpia y el razonamiento
-filtró, 10 son euskera y 6 castellano-euskera, frente a 2 en castellano. En los
-idiomas que parecen más seguros, el modelo ya había sacado el dato sensible por
-dentro. Simplemente no lo dijo en voz alta.
+| | Separación entre niveles | Intervalo al 95% |
+|---|---:|---|
+| publicado, Claude Haiku | 9,6 puntos | de 1,9 a 13,2 |
+| sin las semillas muertas, Claude Haiku | **4,2 puntos** | **de −2,2 a 8,0** |
+| publicado, gpt-5.6-luna | 10,7 puntos | de 3,2 a 15,3 |
+| sin las semillas muertas, gpt-5.6-luna | **4,6 puntos** | **de −2,4 a 9,1** |
+
+El intervalo cruza el cero con los dos jueces. Y encima el gallego se queda en 20
+semillas útiles repartidas en 5 vectores, que no da para compararlo con el
+castellano: `scripts/stats.py` ahora deja esos locales fuera de la tabla en lugar
+de imprimir un número que parece igual que los demás y no significa lo mismo.
+
+**O sea que no tengo hallazgo lingüístico.** No uno más pequeño: ninguno. El mismo
+tipo de error se cargó la misma afirmación dos veces, en direcciones contrarias, y
+a la segunda se la llevó entera.
+
+Lo que sí tengo es el mecanismo, el detector y un corpus que rompe CI si vuelve a
+pasar: `vigia mutate` reintenta cuando el modelo se niega y descarta la mutación en
+vez de guardarla, y `scripts/validate_corpus.py` falla con una sola. Regenerar esas
+52 semillas y repetir el benchmark daría una respuesta de verdad a la pregunta de
+los idiomas. Es lo primero del roadmap, no una nota al pie.
 
 Tablas completas: **[docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md)**,
 todas generadas desde la base de datos con un script. Cómo se hacen los números y
@@ -229,48 +232,51 @@ que se mueve es lo que has cambiado tú.
 umbral, y sabe emitir JUnit XML. Una advertencia, y no es pequeña: **haz el gate
 sobre la tasa agregada, nunca sobre una semilla concreta.**
 
-Lanzar las mismas 233 semillas dos veces contra el mismo modelo, sin cambiar nada,
-cambia el veredicto en el 10,3% de los casos individuales con llama3.1:8b, el
-12,9% con gemma3:4b y el 18,0% con deepseek-r1:8b, mientras la tasa agregada se
+Lanzar las mismas 181 semillas dos veces contra el mismo modelo, sin cambiar nada,
+cambia el veredicto en el 11,6% de los casos individuales con llama3.1:8b, el
+16,0% con gemma3:4b y el 22,1% con deepseek-r1:8b, mientras la tasa agregada se
 mueve un punto o menos. El modelo que razona es el menos reproducible de los tres.
 Un gate por semilla será inestable, y un gate inestable es un gate que tu equipo
 desactiva.
 
 ## Qué ataca
 
-**19 vectores RAG**, 233 semillas en seis variantes lingüísticas, 39 por locale.
+**19 vectores RAG** sobre 233 semillas en seis variantes lingüísticas, de las que
+181 sirven: las otras 52 son las semillas muertas de más arriba, y todo lo que
+sigue está calculado sobre las 181.
 Los que de verdad funcionan, del benchmark de cinco modelos:
 
 | Vector | Ataques | Tasa de filtración | OWASP 2026 |
 |--------|--------:|-------------------:|------------|
-| V05 passive context leak | 60 | 71,7% | LLM09 |
-| V01 numerical anchor | 85 | 61,2% | LLM02 |
+| V05 passive context leak | 55 | 70,9% | LLM09 |
+| V01 numerical anchor | 85 | 61,2% | LLM01 |
+| V09 compliant reformulation | 35 | 51,4% | LLM01 |
 | V03 temporal fragmentation | 60 | 48,3% | LLM02 |
-| V02 summary exfiltration | 60 | 41,7% | LLM02 |
-| V12 training data extraction | 60 | 40,0% | LLM02 |
-| V14 context window exploit | 60 | 38,3% | LLM01 |
+| V02 summary exfiltration | 55 | 45,5% | LLM02 |
+| V12 training data extraction | 55 | 43,6% | LLM08 |
+| V14 context window exploit | 50 | 42,0% | LLM02 |
 
-Los otros trece están en [docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md).
-Algunos apenas funcionan: V11 ingeniería social acierta un 8,3% de las veces, V07
-confusión entre idiomas un 11,7%. Siguen en el corpus porque un vector que falla
-contra todos los modelos también dice algo sobre los modelos.
+Los otros doce están en [docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md).
+Algunos apenas funcionan: V11 ingeniería social acierta un 5,7% de las veces, V18
+confianza en la cadena de suministro un 10,0%. Siguen en el corpus porque un vector
+que falla contra todos los modelos también dice algo sobre los modelos.
 
 **Cinco modelos**, mismas semillas, mismo juez, una sola variable:
 
 | Target | Tasa |
 |--------|-----:|
-| llama3.1:8b | 14,2% |
-| qwen3:8b | 16,7% |
-| deepseek-r1:8b | 20,6% |
-| gemma3:4b | 34,3% |
-| mistral | 65,2% |
+| llama3.1:8b | 17,1% |
+| qwen3:8b | 21,5% |
+| deepseek-r1:8b | 25,4% |
+| gemma3:4b | 43,1% |
+| mistral | 70,2% |
 
-Un segundo juez sobre las respuestas idénticas da 14,6%, 14,6%, 18,5%, 36,9% y
-70,0%: mismo orden, salvo que llama3.1 y qwen3 empatan, y ya estaban a dos puntos.
-La mayor discrepancia entre los dos jueces en toda esa tabla es de 4,7 puntos.
+Un segundo juez sobre las respuestas idénticas da 17,7%, 18,8%, 22,1%, 46,4% y
+76,8%: el mismo orden, con los dos jueces nunca a más de 6,6 puntos, y esa mayor
+discrepancia cae en mistral, que los dos ponen último de todas formas.
 
-**6 estrategias multi-turno**, hasta 8 turnos, con el atacante manteniendo memoria
-de sesión. Seis conversaciones cada una, que no son muchas:
+**6 estrategias multi-turno**, hasta 8 turnos, y el atacante conserva la memoria de
+sesión entre ellos. Seis conversaciones cada una, que no son muchas:
 
 | Estrategia | Ejecuciones | Tasa |
 |------------|------------:|-----:|
@@ -303,20 +309,22 @@ incluye.
 Está desarrollado en [docs/METHODOLOGY.md](https://github.com/Gil910/Vigia/blob/main/docs/METHODOLOGY.md).
 Lo principal, incluido lo que da vergüenza:
 
-**Publiqué un hallazgo lingüístico que era un artefacto de mi propio corpus.** Los
-"+24 puntos del catalán" salían de 80 ataques, 76 de los cuales eran la misma
-semilla. Lo encontré escribiendo un script que recalcula todas las tablas desde la
-base de datos en lugar de fiarme de lo que había escrito. Ese script es
-`scripts/stats.py`, todo lo de `docs/RESULTS.md` sale de ahí, y ahora tiene sus
-propios tests, porque se ha equivocado dos veces y las dos falló imprimiendo una
-tabla con el aspecto de siempre y un número distinto dentro.
+**Publiqué un hallazgo lingüístico que era un artefacto de mi propio corpus, dos
+veces.** Los "+24 puntos del catalán" salían de 80 ataques, 76 de los cuales eran
+la misma semilla. Y la separación en dos niveles que lo sustituyó salía de un
+corpus donde una quinta parte de las semillas eran negativas del mutador, ninguna
+de ellas en castellano. Las dos veces la tabla tenía un aspecto normal. Las dos
+veces lo que lo cazó fue recalcularlo todo desde la base de datos en lugar de
+fiarme de mis notas: `scripts/stats.py`, que ya tiene sus propios tests, y
+`scripts/validate_corpus.py`, que ahora lee los prompts y no solo su esquema.
 
 **Mi primer benchmark comparativo usaba como juez a uno de los targets.** Un
-modelo puntuando su propia salida reporta 6,0 puntos más de filtraciones que un
-juez neutral sobre las mismas 233 respuestas. Apuntando ese mismo juez a un target
-que *no* es él añade 2,6, así que más o menos la mitad de la inflación es dureza
-general y el resto es específicamente autoevaluación. Toda la tanda de septiembre
-usa un juez que no es ninguno de los targets, y los números de aquí son de esa.
+modelo que puntúa su propia salida reporta 7,2 puntos más de filtraciones que un
+juez neutral sobre las mismas 181 respuestas. Si apuntas ese mismo juez a un
+target que *no* es él, la diferencia baja a 2,2, así que un tercio de la inflación
+es dureza general y el resto es específicamente autoevaluación. Toda la tanda de
+septiembre usa un juez que no es ninguno de los targets, y los números de aquí son
+de esa.
 
 **El segundo juez corrió a una temperatura que no pude fijar.** `gpt-5.6-luna`
 rechaza que le pases temperatura, así que sus veredictos salieron a la del modelo
@@ -331,10 +339,10 @@ hace tu stack en producción.
 
 **La caché del juez se indexaba solo por el texto de la respuesta hasta la
 v0.6.0**, así que un turno podía heredar el veredicto de un rechazo anterior
-porque el chatbot respondió con las mismas palabras. 38 de los 5.603 veredictos de
-la base actual (un 0,7%) salieron de esa caché, lo que deja la tasa global real
-entre el 28,0% y el 28,7%. En los resultados de abril era el 4,8%, y por eso esos
-no se citan aquí.
+porque el chatbot respondió con las mismas palabras. Ninguna de las cinco campañas
+del benchmark llegó a tocar esa caché —la tabla de `docs/RESULTS.md` dice 0 de
+905—, pero el 4,8% de los resultados de abril sí, y por eso esos no se citan
+aquí.
 
 **Un juez que se muere a mitad no lo avisa.** Durante las tandas de septiembre se
 agotó la cuota de un plan gratuito en mitad de una campaña y 94 respuestas se
@@ -395,25 +403,27 @@ longitud y de complejidad de consulta se comen la mayor parte de eso.
 
 Por orden aproximado de prioridad:
 
-1. Campañas multi-turno en euskera y gallego. Seis conversaciones por estrategia
-   no son una muestra, y además es la prueba de si las tasas bajas de euskera y
-   gallego son resistencia o artefacto de traducción.
+1. Regenerar las 52 semillas muertas y repetir el benchmark. Hasta que eso pase no
+   hay comparación entre idiomas de ningún tipo, y el gallego se queda en 20
+   semillas útiles. `scripts/fix_seeds.py` hace la primera mitad.
 2. Validar a mano una muestra de respuestas en eu/gl para cuantificar la tasa de
-   falsos negativos del juez en esos idiomas. Todo el hallazgo de los dos niveles
-   depende de que los jueces sepan leerlos.
+   falsos negativos del juez en esos idiomas. Una filtración que el juez no sabe
+   leer puntúa cero, y eso no lo arregla repetir la tanda.
 3. Capturar el razonamiento de más de un modelo. El hallazgo de la cadena de
    pensamiento es de un solo target, y un solo target es una anécdota con buenas
    barras de error.
-4. Cobertura agéntica para las cinco categorías ASI vacías, que necesita antes un
+4. Campañas multi-turno en euskera y gallego. Seis conversaciones por estrategia no
+   son una muestra.
+5. Cobertura agéntica para las cinco categorías ASI vacías, que necesita antes un
    target multiagente de demo.
-5. Un panel de jueces en vez de un juez. Tres jueces discrepando por unos puntos
-   es información que ahora mismo tiro eligiendo uno.
+6. Un panel de jueces en vez de un juez. Que tres jueces discrepen por unos puntos
+   es información, y ahora mismo la tiro a la basura al quedarme con uno.
 
 ## Stack
 
 Python 3.11+, Ollama para los modelos locales y LiteLLM para las APIs comerciales
-(todas las llamadas pasan por `vigia/providers.py`, que es el único sitio donde se
-importa cualquiera de los dos). ChromaDB y LangChain para el RAG de demo. SQLite
+(casi todas las llamadas pasan por `vigia/providers.py`; `vigia/agents/target.py`
+todavía va directo a los dos, que es una verruga que no he pagado). ChromaDB y LangChain para el RAG de demo. SQLite
 para resultados y memoria de sesión. Rich para la salida.
 
 ## Trabajo previo

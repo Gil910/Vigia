@@ -110,23 +110,20 @@ ASI08 and ASI10 need a multi-agent target that Vigia does not ship yet.
 
 ## MITRE ATLAS
 
-Every seed carries an `atlas` technique ID. 390 of the 412 do; the mutated variants
-inherit theirs from the seed they came from.
+All 233 seeds carry an `atlas` technique ID; the mutated variants inherit theirs
+from the seed they came from, which is why the counts come in multiples of twelve.
 
 | Technique | Seeds |
 |-----------|------:|
-| AML.T0048.004 | 130 |
-| AML.T0051.000 | 40 |
-| AML.T0054.000 | 20 |
-| AML.T0051.001 | 20 |
-| AML.T0043.003 | 20 |
-| ten others | 20 each |
+| AML.T0048.004 | 77 |
+| AML.T0051.000 | 24 |
+| eleven others | 12 each |
 
 **This is the weakest mapping in the project and I would not cite it.** Three
 problems, in order of how much they bother me:
 
 The most-used technique, `AML.T0048.004`, is *AI Intellectual Property Theft*, an
-External Harms sub-technique. It is on 130 seeds whose actual job is to make a
+External Harms sub-technique. It is on 77 seeds whose actual job is to make a
 chatbot read out a salary or an SSH key. Data leakage and IP theft are not the same
 harm, and a third of the corpus says they are.
 
