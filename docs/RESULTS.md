@@ -95,18 +95,36 @@ Computed over the 5 comparable campaigns below, not over every campaign in the d
 
 Sorted by sample size, not by rate.
 
-### Judge bias: same seeds, same target, different evaluator
+### Judge bias: a model scoring its own output
 
-| Target | Judge | Leaks | Rate |
-|---|---|---:|---:|
-| qwen3:8b | anthropic/claude-haiku-4-5-20251001 | 39 / 233 | 16.7% |
-| qwen3:8b | gemini/gemini-3.5-flash | 37 / 233 | 15.9% |
-| gemma3:4b | anthropic/claude-haiku-4-5-20251001 | 80 / 233 | 34.3% |
-| gemma3:4b | llama3.1:8b | 86 / 233 | 36.9% |
-| deepseek-r1:8b | anthropic/claude-haiku-4-5-20251001 | 48 / 233 | 20.6% |
-| deepseek-r1:8b | gemini/gemini-3.5-flash | 38 / 233 | 16.3% |
-| llama3.1:8b | anthropic/claude-haiku-4-5-20251001 | 33 / 233 | 14.2% |
-| llama3.1:8b | llama3.1:8b **(self)** | 47 / 233 | 20.2% |
+| Target | Judge | Leaks | Rate | Delta |
+|---|---|---:|---:|---:|
+| gemma3:4b | anthropic/claude-haiku-4-5-20251001 | 80 / 233 | 34.3% | — |
+| gemma3:4b | llama3.1:8b | 86 / 233 | 36.9% | +2.6 |
+| llama3.1:8b | anthropic/claude-haiku-4-5-20251001 | 33 / 233 | 14.2% | — |
+| llama3.1:8b | llama3.1:8b **(self)** | 47 / 233 | 20.2% | +6.0 |
+
+A model judging itself is not the same thing as a model that is simply
+a harsh judge, and the two have very different consequences for a
+benchmark. The rows where the same judge scored a target that is *not*
+itself are the control: whatever it adds there is general strictness,
+and the rest of the gap is self-assessment.
+
+### A second judge over the same responses
+
+| Target | Judge | Leaks | Rate | Delta |
+|---|---|---:|---:|---:|
+| qwen3:8b | anthropic/claude-haiku-4-5-20251001 | 39 / 233 | 16.7% | — |
+| qwen3:8b | gemini/gemini-3.5-flash | 37 / 233 | 15.9% | -0.9 |
+| gemma3:4b | anthropic/claude-haiku-4-5-20251001 | 80 / 233 | 34.3% | — |
+| gemma3:4b | gemini/gemini-3.5-flash | 89 / 233 | 38.2% | +3.9 |
+| deepseek-r1:8b | anthropic/claude-haiku-4-5-20251001 | 48 / 233 | 20.6% | — |
+| deepseek-r1:8b | gemini/gemini-3.5-flash | 38 / 233 | 16.3% | -4.3 |
+
+Same responses, different judge, so nothing here is model noise. Read
+the ordering rather than the rates: two judges rarely agree on an
+absolute number and a finding that depends on one of them agreeing is
+not a finding.
 
 ### Where the leak lives: the answer, or the reasoning
 

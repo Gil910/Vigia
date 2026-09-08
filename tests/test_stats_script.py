@@ -126,6 +126,52 @@ class TestHeadToHead:
         assert "18 / 20" in bias
 
 
+class TestTheTwoJudgeQuestionsStaySeparate:
+    """Autoevaluarse y "¿coincide otro juez?" son preguntas distintas."""
+
+    @pytest.fixture
+    def two_alts(self, tmp_path):
+        """alpha y beta bajo Haiku, más un re-juicio de cada una y un autojuicio."""
+        path = tmp_path / "j.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+        base = {"model": "haiku", "provider": "litellm"}
+        setup = [(1, "alpha", base, 4), (2, "beta", base, 8),
+                 (3, "alpha", {"model": "segundo-juez"}, 6),
+                 (4, "beta", {"model": "segundo-juez"}, 9),
+                 (5, "beta", {"model": "beta"}, 14)]      # se juzga a sí misma
+        for cid, target, judge, leaks in setup:
+            con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
+                        (cid, f"c{cid}", target,
+                         json.dumps({"target": {"model": target, **BENCH_TARGET},
+                                     "evaluator": judge})))
+            for i in range(20):
+                con.execute(
+                    "INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    (cid, f"S-{i:03d}", "V01_v", "es-ES", "r",
+                     9 if i < leaks else 0, "[blocked] ok"))
+        con.commit()
+        con.close()
+        return path
+
+    def test_the_self_judged_model_does_not_appear_as_a_second_opinion(self, two_alts):
+        alt = section(run(two_alts), "A second judge")
+        assert "segundo-juez" in alt
+        assert "| beta | beta" not in alt, "juzgarse a sí mismo no es otra opinión"
+
+    def test_the_second_judge_section_uses_one_judge_for_every_row(self, two_alts):
+        """Una tanda de re-juicio que agota su cuota deja unos targets con un juez
+
+        y otros con otro. Mezclarlos en una tabla son dos medias opiniones leídas
+        como una, y las filas no lo dicen.
+        """
+        alt = section(run(two_alts), "A second judge")
+        judges = {ln.split("|")[2].strip() for ln in alt.splitlines()
+                  if ln.startswith("| ") and "---" not in ln and "Judge" not in ln}
+        assert judges == {"haiku", "segundo-juez"}, judges
+
+
 class TestEmptySections:
     def test_no_multiturn_says_so_instead_of_an_empty_table(self, db):
         multi = section(run(db), "Multi-turn strategies")
@@ -211,16 +257,16 @@ class TestDegradedJudge:
 
         Contando el fallback son 5 de 20, el 25%. Sin contarlo, 4 de 19: 21,1%.
         """
-        bias = section(run(dead), "Judge bias")
-        assert "| 4 / 19 | 21.1% |" in bias
-        assert "5 / 20" not in bias
+        alt = section(run(dead), "A second judge")
+        assert "| 4 / 19 | 21.1% |" in alt
+        assert "5 / 20" not in alt
 
     def test_the_half_dead_campaign_is_named_and_dropped(self, dead):
         out = run(dead)
         disclosure = section(out, "Verdicts the judge never gave")
         assert "| 4 | alpha | juez-muerto | 12 (60%) | 20 | **yes** |" in disclosure
         assert "| 3 | alpha | juez-con-hipo | 1 (5%) | 20 | no |" in disclosure
-        assert "juez-muerto" not in section(out, "Judge bias"), "no juzgó, no opina"
+        assert "juez-muerto" not in section(out, "A second judge"), "no juzgó, no opina"
 
     def test_a_clean_database_says_so(self, db):
         assert "Every score in this database came from a judge" in section(

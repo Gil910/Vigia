@@ -157,7 +157,11 @@ def head_to_head():
               for (seeds, _s), group in groups.items() if len(group) > 1]
     if not scored:
         return {}
-    return {t: min(ids) for t, ids in max(scored)[2].items()}
+    # Rank on the numbers only. Plain max() falls through to comparing the third
+    # element when the first two tie, and that element is a dict, so two equally
+    # good groups crashed the whole report instead of picking either.
+    best = max(scored, key=lambda s: s[:2])
+    return {t: min(ids) for t, ids in best[2].items()}
 
 
 total = rows("SELECT COUNT(*) c FROM attacks")[0]["c"]
@@ -273,23 +277,46 @@ else:
 
 MIN_PAIR_OVERLAP = 0.9
 
+# The benchmark's judge is the reference every other judging is compared against.
+# Deciding it by counting campaigns instead put the tables the wrong way round the
+# moment a re-judging covered as many targets as the original run did.
+BASELINE_JUDGE = next(iter(judges)) if len(judges) == 1 else None
 
-def matched_pairs(same_judge):
-    """Campaign pairs against one target, over the seeds they both scored.
+# Models that scored their own output somewhere in this database.
+SELF_JUDGES = {c["target"] for c in CAMPAIGNS.values() if c["judge"] == c["target"]}
 
-    same_judge=False finds the judge-bias experiment: one variable, the judge.
-    same_judge=True finds a true repeat, which means everything the campaign
-    measured matches — not merely the judge. Two campaigns can share a judge and
-    still differ in something that matters, and calling that "run-to-run
-    variance" would blame the model for a change you made.
 
-    Pairs on overlap rather than on identical seed sets, and every rate below is
-    computed over the shared seeds. One failed judge call drops a row, and with
-    equality that single blip would quietly remove a campaign from every paired
-    comparison in the report — the comparison would not come out wrong, it would
-    come out missing, which is harder to notice.
+def matched_pairs(kind):
+    """Pairs of campaigns against one target, over the seeds they both scored.
+
+    Three different questions, which used to be two and shared a table:
+
+    "self"      does a model flatter its own output? One campaign judged by the
+                target itself, one by anybody else.
+    "alternate" does an unrelated judge agree? Held to a single alternate judge
+                across every target — a re-judging run that hits an API quota
+                partway leaves some targets scored by one alternate and some by
+                another, and a table built from that is two half opinions read
+                as one, with nothing in the rows to say so.
+    "repeat"    run-to-run variance. Everything the campaign measured has to
+                match, not merely the judge; two campaigns can share a judge and
+                differ in something you changed, and calling that variance would
+                blame the model for it.
+
+    Pairs on overlap rather than identical seed sets, and every rate is computed
+    over the shared seeds. One failed judge call drops a row, and with equality
+    that single blip would quietly remove a campaign from every paired comparison
+    in the report — not wrong, missing, which is harder to notice.
     """
-    found = {}
+    def judges_of(a, b):
+        return CAMPAIGNS[a]["judge"], CAMPAIGNS[b]["judge"]
+
+    def alt_of(a, b):
+        """The judge that is not the benchmark's."""
+        ja, jb = judges_of(a, b)
+        return jb if ja == BASELINE_JUDGE else ja
+
+    candidates = []
     ids = sorted(CAMPAIGNS)
     for i, a in enumerate(ids):
         for b in ids[i + 1:]:
@@ -302,16 +329,38 @@ def matched_pairs(same_judge):
             if not shared or len(shared) < MIN_PAIR_OVERLAP * max(
                     len(ca["seeds"]), len(cb["seeds"])):
                 continue
-            if same_judge:
-                if shape(a) != shape(b) or ca["judge"] != cb["judge"]:
+            ja, jb = judges_of(a, b)
+            if kind == "repeat":
+                if shape(a) != shape(b) or ja != jb:
                     continue
-            elif ca["judge"] == cb["judge"] or ca["config"] is None:
-                continue
-            # one pair per target: the widest one, since a 135-seed comparison
-            # settles the question and an 11-seed one only gestures at it
-            prev = found.get(ca["target"])
-            if prev is None or len(shared) > len(prev[3]):
-                found[ca["target"]] = (a, b, ca["target"], shared)
+            else:
+                if ja == jb or ca["config"] is None:
+                    continue
+                # A judge that scores itself somewhere in this database belongs in
+                # the self-assessment section, including the campaigns where it
+                # scored something else — that pairing is the control, and reading
+                # it next to the self-judged one is the whole point.
+                if (kind == "self") != (alt_of(a, b) in SELF_JUDGES):
+                    continue
+            candidates.append((a, b, ca["target"], shared))
+
+    if kind == "alternate":
+        coverage = {}
+        for a, b, target, _shared in candidates:
+            coverage.setdefault(alt_of(a, b), set()).add(target)
+        if not coverage:
+            return []
+        # One alternate judge for the whole table, the one covering most targets.
+        chosen = max(coverage, key=lambda j: (len(coverage[j]), j or ""))
+        candidates = [p for p in candidates if alt_of(p[0], p[1]) == chosen]
+
+    found = {}
+    for pair in candidates:
+        # one pair per target: the widest one, since a 135-seed comparison
+        # settles the question and an 11-seed one only gestures at it
+        prev = found.get(pair[2])
+        if prev is None or len(pair[3]) > len(prev[3]):
+            found[pair[2]] = pair
     return sorted(found.values(), key=lambda v: -len(v[3]))
 
 
@@ -322,21 +371,50 @@ def rate_over(cid, seeds):
                 f"WHERE campaign_id = {cid} AND {JUDGED} AND seed_id IN ({ids})")[0]
 
 
-print("\n### Judge bias: same seeds, same target, different evaluator\n")
-bias = matched_pairs(same_judge=False)
-if not bias:
-    print("Not measured in this database: no target was run twice over the same")
-    print("seeds with two different judges. Worth doing — a model judging its own")
-    print("output scored 8.9 points more generously in the April 2026 run.")
-else:
-    print("| Target | Judge | Leaks | Rate |")
-    print("|---|---|---:|---:|")
-    for a, b, target, shared in bias:
-        for cid in (a, b):
+def judge_table(pairs):
+    print("| Target | Judge | Leaks | Rate | Delta |")
+    print("|---|---|---:|---:|---:|")
+    for a, b, target, shared in pairs:
+        base = None
+        # the row whose judge is not the target goes first and is the baseline
+        order = sorted((a, b), key=lambda c: CAMPAIGNS[c]["judge"] == target)
+        for cid in order:
             r = rate_over(cid, shared)
+            rate = 100.0 * r["v"] / r["n"] if r["n"] else 0.0
             judge = CAMPAIGNS[cid]["judge"] or "(unrecorded)"
             mark = " **(self)**" if judge == target else ""
-            print(f"| {target} | {judge}{mark} | {r['v']} / {r['n']} | {pct(r['v'], r['n'])} |")
+            delta = "—" if base is None else f"{rate - base:+.1f}"
+            base = rate if base is None else base
+            print(f"| {target} | {judge}{mark} | {r['v']} / {r['n']} | "
+                  f"{pct(r['v'], r['n'])} | {delta} |")
+
+
+print("\n### Judge bias: a model scoring its own output\n")
+selfpairs = matched_pairs("self")
+if not selfpairs:
+    print("Not measured in this database: no target was scored both by itself and")
+    print("by somebody else over the same seeds. Worth doing — it is the reason")
+    print("every campaign here uses a judge that is not one of the targets.")
+else:
+    judge_table(selfpairs)
+    print("\nA model judging itself is not the same thing as a model that is simply")
+    print("a harsh judge, and the two have very different consequences for a")
+    print("benchmark. The rows where the same judge scored a target that is *not*")
+    print("itself are the control: whatever it adds there is general strictness,")
+    print("and the rest of the gap is self-assessment.")
+
+print("\n### A second judge over the same responses\n")
+altpairs = matched_pairs("alternate")
+if not altpairs:
+    print("Not measured in this database: every campaign was scored by one judge.")
+    print("`scripts/rejudge.py --judge` scores stored responses again without")
+    print("re-running the models, which is what makes this cheap enough to bother.")
+else:
+    judge_table(altpairs)
+    print("\nSame responses, different judge, so nothing here is model noise. Read")
+    print("the ordering rather than the rates: two judges rarely agree on an")
+    print("absolute number and a finding that depends on one of them agreeing is")
+    print("not a finding.")
 
 print("\n### Where the leak lives: the answer, or the reasoning\n")
 
@@ -397,7 +475,7 @@ else:
               + ", ".join(f"{r['language']} {r['n']}" for r in langs) + ".")
 
 print("\n### Run-to-run variance: identical config, run twice\n")
-repeats = matched_pairs(same_judge=True)
+repeats = matched_pairs("repeat")
 if not repeats:
     print("Not measured in this database: no configuration was run twice over the")
     print("same seeds. The April 2026 run put it at 12-14% of individual verdicts")
