@@ -257,6 +257,20 @@ table(
                f"| {r['vector']} | {r['n']} | {pct(r['v'], r['n'])} | {r['avg']:.1f} |"),
 )
 
+agent_runs = rows(f"""SELECT c.id, COUNT(*) n, SUM(a.score >= {LEAK}) v
+                      FROM attacks a JOIN campaigns c ON c.id = a.campaign_id
+                      WHERE c.name LIKE 'agent%' AND {JUDGED.replace('score', 'a.score', 1)
+                                                            .replace('evaluator_reasoning',
+                                                                     'a.evaluator_reasoning')}
+                      GROUP BY c.id ORDER BY c.id""")
+if len(agent_runs) > 1:
+    totals = ", ".join(f"{r['v']}/{r['n']}" for r in agent_runs)
+    lo = min(100.0 * r["v"] / r["n"] for r in agent_runs)
+    hi = max(100.0 * r["v"] / r["n"] for r in agent_runs)
+    print(f"\nThe same seeds run {len(agent_runs)} times: {totals} compromised, "
+          f"so {lo:.1f}–{hi:.1f}%. Quote that range, not the per-vector rows above,")
+    print("which are three attacks each.")
+
 print("\n### Multi-turn strategies\n")
 strat = {}
 for r in rows("""SELECT c.name, a.score FROM attacks a JOIN campaigns c ON c.id = a.campaign_id
@@ -389,6 +403,25 @@ def judge_table(pairs):
                   f"{pct(r['v'], r['n'])} | {delta} |")
 
 
+print("\n### Score distribution, and how much the threshold matters\n")
+dist = rows(f"""SELECT CASE WHEN score <= 1 THEN '0-1' WHEN score <= 4 THEN '2-4'
+                            WHEN score <= 6 THEN '5-6' WHEN score <= 8 THEN '7-8'
+                            ELSE '9-10' END band, COUNT(*) n
+                FROM attacks WHERE {JUDGED} AND {SCOPED} GROUP BY band ORDER BY band""")
+n_all = sum(r["n"] for r in dist)
+if n_all:
+    print("| Score | Attacks |")
+    print("|---|---:|")
+    for r in dist:
+        print(f"| {r['band']} | {r['n']} |")
+    at = {t: rows(f"SELECT COUNT(*) n FROM attacks WHERE {JUDGED} AND {SCOPED} "
+                  f"AND score >= {t}")[0]["n"] for t in (LEAK, LEAK + 1)}
+    print(f"\nThe distribution is bimodal, so the exact cut-off does little work: "
+          f"moving the\nleak threshold from {LEAK} to {LEAK + 1} takes the overall rate "
+          f"from {pct(at[LEAK], n_all)} to {pct(at[LEAK + 1], n_all)}.")
+    print("The judge is mostly making easy calls, which is worth remembering in both")
+    print("directions when reading a headline rate.")
+
 print("\n### Judge bias: a model scoring its own output\n")
 selfpairs = matched_pairs("self")
 if not selfpairs:
@@ -515,20 +548,27 @@ if not repeats:
     print("same seeds. The April 2026 run put it at 12-14% of individual verdicts")
     print("flipping while the aggregate rate held to about a point.")
 else:
-    print("| Target | Run 1 | Run 2 | Verdicts flipped | Identical scores |")
-    print("|---|---:|---:|---:|---:|")
+    print("| Target | Run 1 | Run 2 | Verdicts flipped | Identical scores | Identical responses |")
+    print("|---|---:|---:|---:|---:|---:|")
     for a, b, label, _shared in repeats:
-        sa = {r["seed_id"]: r["score"] for r in
-              rows(f"SELECT seed_id, score FROM attacks WHERE campaign_id = {a} AND {JUDGED}")}
-        sb = {r["seed_id"]: r["score"] for r in
-              rows(f"SELECT seed_id, score FROM attacks WHERE campaign_id = {b} AND {JUDGED}")}
+        def scored(cid):
+            return {r["seed_id"]: (r["score"], r["response"] or "") for r in
+                    rows(f"SELECT seed_id, score, response FROM attacks "
+                         f"WHERE campaign_id = {cid} AND {JUDGED}")}
+        sa, sb = scored(a), scored(b)
         common = sa.keys() & sb.keys()
-        flips = sum((sa[k] >= LEAK) != (sb[k] >= LEAK) for k in common)
-        same = sum(sa[k] == sb[k] for k in common)
-        r1 = sum(sa[k] >= LEAK for k in common)
-        r2 = sum(sb[k] >= LEAK for k in common)
+        flips = sum((sa[k][0] >= LEAK) != (sb[k][0] >= LEAK) for k in common)
+        same = sum(sa[k][0] == sb[k][0] for k in common)
+        # How much of the disagreement is the target rather than the judge. If the
+        # model said the same words twice and the score moved, that is the judge.
+        same_text = sum(sa[k][1] == sb[k][1] for k in common)
+        r1 = sum(sa[k][0] >= LEAK for k in common)
+        r2 = sum(sb[k][0] >= LEAK for k in common)
         print(f"| {label} | {pct(r1, len(common))} | {pct(r2, len(common))} | "
-              f"{flips} / {len(common)} ({pct(flips, len(common))}) | {pct(same, len(common))} |")
+              f"{flips} / {len(common)} ({pct(flips, len(common))}) | "
+              f"{pct(same, len(common))} | {same_text} / {len(common)} |")
+    print("\nThe last column is how often the model produced the same words twice.")
+    print("Where it is low, the variance is the target and not the judge.")
 
 print("\n### By language, under each judge\n")
 

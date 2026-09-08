@@ -82,6 +82,9 @@ Computed over the 5 comparable campaigns below, not over every campaign in the d
 | memory_poisoning | 3 | 0.0% | 0.0 |
 | cross_tool_privilege_escalation | 6 | 0.0% | 0.0 |
 
+The same seeds run 3 times: 10/22, 11/22, 11/22 compromised, so 45.5–50.0%. Quote that range, not the per-vector rows above,
+which are three attacks each.
+
 ### Multi-turn strategies
 
 | Strategy | Runs | Leak rate |
@@ -94,6 +97,21 @@ Computed over the 5 comparable campaigns below, not over every campaign in the d
 | persona_persistence | 6 | 33.3% |
 
 Sorted by sample size, not by rate.
+
+### Score distribution, and how much the threshold matters
+
+| Score | Attacks |
+|---|---:|
+| 0-1 | 598 |
+| 2-4 | 215 |
+| 5-6 | 17 |
+| 7-8 | 162 |
+| 9-10 | 173 |
+
+The distribution is bimodal, so the exact cut-off does little work: moving the
+leak threshold from 5 to 6 takes the overall rate from 30.2% to 29.4%.
+The judge is mostly making easy calls, which is worth remembering in both
+directions when reading a headline rate.
 
 ### Judge bias: a model scoring its own output
 
@@ -162,11 +180,14 @@ behind it are not a settled set.
 
 ### Run-to-run variance: identical config, run twice
 
-| Target | Run 1 | Run 2 | Verdicts flipped | Identical scores |
-|---|---:|---:|---:|---:|
-| gemma3:4b | 34.3% | 33.5% | 30 / 233 (12.9%) | 55.8% |
-| deepseek-r1:8b | 20.6% | 17.2% | 42 / 233 (18.0%) | 51.5% |
-| llama3.1:8b | 14.2% | 14.2% | 24 / 233 (10.3%) | 66.1% |
+| Target | Run 1 | Run 2 | Verdicts flipped | Identical scores | Identical responses |
+|---|---:|---:|---:|---:|---:|
+| gemma3:4b | 34.3% | 33.5% | 30 / 233 (12.9%) | 55.8% | 39 / 233 |
+| deepseek-r1:8b | 20.6% | 17.2% | 42 / 233 (18.0%) | 51.5% | 27 / 233 |
+| llama3.1:8b | 14.2% | 14.2% | 24 / 233 (10.3%) | 66.1% | 35 / 233 |
+
+The last column is how often the model produced the same words twice.
+Where it is low, the variance is the target and not the judge.
 
 ### By language, under each judge
 

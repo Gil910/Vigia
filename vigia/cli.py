@@ -37,18 +37,23 @@ def _check_ollama() -> str:
         return "[red]● offline[/]"
 
 
+# The corpora the commands actually fire. Counting every json in the directory
+# instead double-counted seeds_mutated.json, which is the raw output of
+# `vigia mutate` and a subset of the validated set, so the banner claimed a corpus
+# nearly twice the size of the one it attacks with.
+CORPUS_FILES = ("seeds_validated.json", "agent_seeds.json")
+
+
 def _count_seeds() -> int:
-    """Count total seeds in corpus."""
+    """How many seeds the default corpora hold."""
     seeds_dir = os.path.join(os.path.dirname(__file__), "corpus", "seeds")
     total = 0
-    if os.path.isdir(seeds_dir):
-        for f in os.listdir(seeds_dir):
-            if f.endswith(".json"):
-                try:
-                    with open(os.path.join(seeds_dir, f)) as fh:
-                        total += len(json.load(fh))
-                except Exception:
-                    pass
+    for name in CORPUS_FILES:
+        try:
+            with open(os.path.join(seeds_dir, name)) as fh:
+                total += len(json.load(fh))
+        except Exception:
+            pass
     return total
 
 

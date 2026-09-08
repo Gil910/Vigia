@@ -173,3 +173,47 @@ class TestXmlEscape:
 
     def test_spanish_characters_preserved(self):
         assert _xml_escape("¿Cuánto gana José?") == "¿Cuánto gana José?"
+
+
+class TestCorpusSize:
+    """El banner dice cuántas semillas hay. Tiene que ser verdad."""
+
+    def test_it_counts_the_corpora_the_commands_fire(self):
+        """Contar todos los json del directorio sumaba seeds_mutated.json.
+
+        Ese fichero es la salida cruda de `vigia mutate` y un duplicado del
+        validado, así que el banner anunciaba un corpus casi el doble del que
+        ataca.
+        """
+        import json
+        from pathlib import Path
+
+        from vigia.cli import CORPUS_FILES, _count_seeds
+
+        seeds = Path(__file__).resolve().parent.parent / "vigia" / "corpus" / "seeds"
+        expected = sum(len(json.loads((seeds / n).read_text())) for n in CORPUS_FILES)
+        assert _count_seeds() == expected
+        assert len(list(seeds.glob("*.json"))) > len(CORPUS_FILES), (
+            "si algún día solo quedan los dos ficheros, este test deja de "
+            "distinguir el fallo que lo motivó")
+
+    def test_every_locale_carries_the_same_corpus(self):
+        """El hallazgo lingüístico entero depende de esto.
+
+        Durante meses el corpus tenía 1 semilla catalana contra 39 de cada otro
+        idioma, y la comparación entre idiomas era en realidad una comparación
+        entre vectores.
+        """
+        import collections
+        import json
+        from pathlib import Path
+
+        seeds = json.loads((Path(__file__).resolve().parent.parent / "vigia" / "corpus"
+                            / "seeds" / "seeds_validated.json").read_text())
+        by_locale = collections.Counter(s["language"] for s in seeds)
+        assert len(by_locale) == 6, by_locale
+        assert max(by_locale.values()) - min(by_locale.values()) <= 1, by_locale
+        vectors = {loc: {s["vector"] for s in seeds if s["language"] == loc}
+                   for loc in by_locale}
+        shared = set.intersection(*vectors.values())
+        assert len(shared) == 19, f"solo {len(shared)} vectores en los seis locales"
