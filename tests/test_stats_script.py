@@ -318,3 +318,72 @@ class TestConfigVersusData:
         con.commit()
         con.close()
         assert "does not match what they did" not in run(path)
+
+
+class TestLanguageUnderEachJudge:
+    """La defensa del hallazgo de idiomas: las mismas respuestas, varios jueces.
+
+    Las tasas de la fixture están elegidas para que cada forma de estropearlo dé
+    un número distinto: 45,0% si está bien, 47,6% si se cuela la prueba de humo,
+    30,0% si se mezcla un brazo que juzgó otro texto.
+    """
+
+    @pytest.fixture
+    def judged_thrice(self, tmp_path):
+        path = tmp_path / "l.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+
+        def add(cid, target, judge, leaks, n=20, rejudge=None, arm="full"):
+            cfg = {"target": {"model": target, **BENCH_TARGET},
+                   "evaluator": {"model": judge}}
+            if rejudge:
+                cfg["rejudge"] = {"source_campaign": rejudge, "arm": arm}
+            con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
+                        (cid, f"c{cid}", target, json.dumps(cfg)))
+            for i in range(n):
+                con.execute(
+                    "INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    (cid, f"S-{i:03d}", "V01_v", "ca-ES" if i % 2 else "es-ES", "r",
+                     9 if i < leaks else 0, "[blocked] ok"))
+
+        add(1, "alpha", "haiku", 4)
+        add(2, "beta", "haiku", 8)                        # haiku: 6/20 por idioma
+        add(3, "alpha", "segundo", 6, rejudge=1)
+        add(4, "beta", "segundo", 12, rejudge=2)          # segundo: 9/20 por idioma
+        add(5, "alpha", "segundo", 3, n=3, rejudge=1)     # prueba de humo
+        add(6, "alpha", "segundo", 0, rejudge=1, arm="answer")   # otro texto
+        con.commit()
+        con.close()
+        return path
+
+    def _row(self, db, locale):
+        for line in section(run(db), "By language, under each judge").splitlines():
+            if line.startswith(f"| {locale} |"):
+                return line
+        raise AssertionError(f"no hay fila para {locale}")
+
+    def test_the_rates_are_what_the_full_campaigns_say(self, judged_thrice):
+        assert self._row(judged_thrice, "ca-ES") == "| ca-ES | 30.0% | 45.0% |"
+        assert self._row(judged_thrice, "es-ES") == "| es-ES | 30.0% | 45.0% |"
+
+    def test_a_three_row_smoke_test_is_not_pooled_with_the_real_ones(self, judged_thrice):
+        """`--limit 3` deja una campaña más, con el mismo juez y tres filas.
+
+        Sumarla mete un puñado de veredictos bajo el mismo encabezado que 40, y
+        aquí subiría el catalán de 45,0% a 47,6%.
+        """
+        assert "47.6%" not in self._row(judged_thrice, "ca-ES")
+
+    def test_an_answer_only_arm_is_not_a_second_opinion(self, judged_thrice):
+        """Ese brazo juzgó otro texto: no es el mismo juicio sobre lo mismo."""
+        assert "30.0% | 30.0%" not in self._row(judged_thrice, "ca-ES")
+
+    def test_it_prints_an_ordering_per_judge(self, judged_thrice):
+        sec = section(run(judged_thrice), "By language, under each judge")
+        assert "- **haiku**:" in sec
+        assert "- **segundo**:" in sec
+
+    def test_one_judge_only_says_there_is_nothing_to_compare(self, db):
+        assert "nothing to compare" in section(run(db), "By language, under each judge")

@@ -496,6 +496,90 @@ else:
         print(f"| {label} | {pct(r1, len(common))} | {pct(r2, len(common))} | "
               f"{flips} / {len(common)} ({pct(flips, len(common))}) | {pct(same, len(common))} |")
 
+print("\n### By language, under each judge\n")
+
+
+def judge_views():
+    """Per judge, the campaigns covering the comparable set's responses.
+
+    A re-judging with `--arm full` reads exactly the responses the benchmark
+    produced, so grouping those by judge gives the same 1,165 answers scored
+    several times over. That is the only honest way to ask whether a finding
+    about languages is a property of the models or of one judge.
+    """
+    run_ids = set(RUN.values())
+    views = {}
+    for cid, c in CAMPAIGNS.items():
+        if cid in DEGRADED:
+            continue
+        try:
+            cfg = json.loads(c["config"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        rj = cfg.get("rejudge") or {}
+        if rj and rj.get("arm") != "full":
+            continue
+        src = rj.get("source_campaign", cid)
+        if src not in run_ids:
+            continue
+        # A smoke test is a re-judging of three rows. Pooling it with the full
+        # ones would put a handful of verdicts under the same heading as 1,165.
+        if len(c["seeds"]) < MIN_PAIR_OVERLAP * len(CAMPAIGNS[src]["seeds"]):
+            continue
+        views.setdefault(c["judge"] or "(unrecorded)", set()).add(cid)
+    return views
+
+
+views = judge_views()
+if len(views) < 2:
+    print("Only one judge scored these responses, so there is nothing to compare.")
+    print("`scripts/rejudge.py --judge` scores them again without re-running the")
+    print("models, which is what makes a second opinion cheap enough to bother with.")
+else:
+    def loc_rates(cids):
+        out = {}
+        for r in rows(f"""SELECT language, COUNT(*) n, SUM(score >= {LEAK}) v
+                          FROM attacks
+                          WHERE {JUDGED} AND campaign_id IN ({','.join(map(str, cids))})
+                          GROUP BY language"""):
+            out[r["language"]] = (100.0 * r["v"] / r["n"], r["n"])
+        return out
+
+    per_judge = {j: loc_rates(c) for j, c in views.items()}
+    # widest coverage first; a judge that only reached some targets is still worth
+    # showing, but it is not the one to read the headline off
+    order = sorted(views, key=lambda j: (-len({CAMPAIGNS[c]["target"] for c in views[j]}), j))
+    locales = sorted(per_judge[order[0]], key=lambda loc: -per_judge[order[0]][loc][0])
+
+    def covers(j):
+        return len({CAMPAIGNS[c]["target"] for c in views[j]})
+
+    full = covers(order[0])
+    print("| Locale | " + " | ".join(
+        f"{j.split('/')[-1]} ({covers(j)} target{'s' if covers(j) != 1 else ''})"
+        for j in order) + " |")
+    print("|---" * (len(order) + 1) + "|")
+    for loc in locales:
+        cells = []
+        for j in order:
+            r = per_judge[j].get(loc)
+            cells.append(f"{r[0]:.1f}%" if r else "—")
+        print(f"| {loc} | " + " | ".join(cells) + " |")
+
+    print()
+    for j in order:
+        ranked = sorted(per_judge[j], key=lambda loc: -per_judge[j][loc][0])
+        print(f"- **{j.split('/')[-1]}**: " + " > ".join(ranked))
+    print("\nThe same responses, scored by each. Where the orderings agree the")
+    print("finding is about the models; where they disagree it was about the judge.")
+    partial = [j for j in order if covers(j) < full]
+    if partial:
+        print(f"\nRead {', '.join(j.split('/')[-1] for j in partial)} down the column")
+        print("only. Fewer targets means a different set of responses, so those rates")
+        print("are not comparable across the row with the ones beside them — the")
+        print("ordering within the column still is.")
+
+
 # ── Language comparison, controlled for attack vector ────────────────────────
 #
 # Raw per-locale rates are only comparable if every locale ran the same mix of
