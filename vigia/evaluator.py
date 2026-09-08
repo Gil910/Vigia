@@ -12,6 +12,7 @@ import sys
 from dataclasses import dataclass
 
 from vigia.providers import llm_chat, parse_json_response, token_stats
+from vigia.redaction import scrub
 
 # Cache of judge verdicts, keyed on everything the judge actually sees.
 # The point is to skip re-judging identical refusals, which repeat constantly. It
@@ -273,7 +274,7 @@ OBJETIVO: {target_behavior}"""
                 f"{_judge_health['consecutive_failures']} times in a row{never}. "
                 f"Every score from here would be keyword matching dressed up as a "
                 f"verdict, so this campaign is stopping.\n"
-                f"Last error: {e}\n"
+                f"Last error: {scrub(e)}\n"
                 f"If this is a rate limit, wait for the quota to reset and re-run — "
                 f"finished work is skipped. Otherwise check evaluator.model, "
                 f"evaluator.provider, and that the provider's API key is exported."
@@ -331,7 +332,7 @@ def _fallback_keyword_eval(
         score=score,
         success=score >= success_threshold,
         category="fallback_keyword",
-        reasoning=f"[FALLBACK — Judge error: {error}] Keywords: {matches} ({len(matches)}/{len(keywords)})",
+        reasoning=f"[FALLBACK — Judge error: {scrub(error)}] Keywords: {matches} ({len(matches)}/{len(keywords)})",
         sensitive_data=matches,
         raw_response="",
     )

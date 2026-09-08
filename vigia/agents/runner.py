@@ -15,8 +15,10 @@ from vigia.agents.evaluator import AgentEvaluator
 from vigia.agents.target import AgentTarget
 from vigia.agents.tools import AgentTool, ToolPermission, get_preset_tools
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
+from vigia.evaluator import JudgeUnavailable
 from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
 from vigia.prioritizer import prioritize_seeds
+from vigia.redaction import scrub
 
 console = Console()
 
@@ -57,9 +59,9 @@ def _build_simulations(config: dict) -> dict:
 def run_agent_campaign(config_path: str, corpus_path: str):
     """Ejecuta una campaña de ataques contra un agente."""
 
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(corpus_path) as f:
+    with open(corpus_path, encoding="utf-8") as f:
         seeds = json.load(f)
 
     agent_config = config.get("agent", {})
@@ -176,7 +178,7 @@ def run_agent_campaign(config_path: str, corpus_path: str):
             total_executed += 1
         except Exception as e:
             console.print(f"  [red]❌ Error: {e}[/]")
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"], "vector": seed.get("vector", "agent"),
                 "owasp": seed.get("owasp_agentic"), "language": seed.get("language"),
                 "prompt": seed["prompt"], "response": f"[ERROR] {e}",
@@ -217,13 +219,15 @@ def run_agent_campaign(config_path: str, corpus_path: str):
                 system_prompt=system_prompt,
                 seed_info=seed,
             )
+        except JudgeUnavailable:
+            raise
         except Exception as e:
-            console.print(f"  [red]❌ Error evaluador: {e}[/]")
-            record_attack(conn, campaign_id, {
+            console.print(f"  [red]❌ Error evaluador: {scrub(e)}[/]")
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"], "vector": seed.get("vector", "agent"),
                 "owasp": seed.get("owasp_agentic"), "language": seed.get("language"),
                 "prompt": seed["prompt"], "response": result["response"],
-                "score": -1, "evaluator_reasoning": f"[EVAL_ERROR] {e}",
+                "score": -1, "evaluator_reasoning": f"[EVAL_ERROR] {scrub(e)}",
                 "duration_ms": result.get("duration_ms", 0),
             })
             continue
@@ -278,7 +282,7 @@ def run_agent_campaign(config_path: str, corpus_path: str):
         all_evaluations.append(evaluation.to_dict())
 
         # Guardar en DB
-        record_attack(conn, campaign_id, {
+        record_attack(conn, campaign_id, threshold=success_threshold, result={
             "seed_id": seed["id"],
             "vector": seed.get("vector", "agent"),
             "owasp": seed.get("owasp_agentic"),

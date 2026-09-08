@@ -16,7 +16,9 @@ from datetime import datetime
 import yaml
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import evaluate_with_llm, warn_if_self_judging
+from vigia.evaluator import JudgeUnavailable, evaluate_with_llm, warn_if_self_judging
+from vigia.paths import packaged
+from vigia.redaction import scrub
 from vigia.targets import create_target
 
 
@@ -64,19 +66,28 @@ class ScanResult:
 
     @property
     def exit_code(self) -> int:
-        """0 = passed, 1 = vulnerabilities found, 2 = scan errors."""
-        if self.total_errors > 0 and self.total_executed == 0:
+        """0 = passed, 1 = vulnerabilities found, 2 = the scan did not run.
+
+        `total_executed` counts target queries, not verdicts. The old condition
+        was `total_errors > 0 and total_executed == 0`, so a target that answered
+        every prompt while every judge call failed produced no findings, passed,
+        and exited 0 — a CI gate going green because the judge was down. A scan
+        that errored and found nothing has not cleared anything.
+        """
+        if self.total_errors > 0 and not self.findings:
             return 2
         return 0 if self.passed else 1
 
     def to_summary(self) -> str:
         """One-line summary for CI logs."""
-        status = "PASSED" if self.passed else "FAILED"
+        status = ("ERRORED" if self.exit_code == 2
+                  else "PASSED" if self.passed else "FAILED")
+        errors = f" | {self.total_errors} errored" if self.total_errors else ""
         return (
             f"[vigia] {status} | "
             f"{self.target_model} | "
             f"{len(self.vulnerabilities)}/{self.total_executed} vulnerabilities "
-            f"(threshold >= {self.threshold}) | "
+            f"(threshold >= {self.threshold}){errors} | "
             f"{len(self.critical)} critical"
         )
 
@@ -163,9 +174,9 @@ def run_scan(
     Run a scan campaign and return structured results.
     This is the non-interactive equivalent of run_campaign.
     """
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(corpus_path) as f:
+    with open(corpus_path, encoding="utf-8") as f:
         seeds = json.load(f)
 
     eval_config = config.get("evaluator", {})
@@ -187,7 +198,7 @@ def run_scan(
 
     # Setup target — use a temp chroma dir to avoid lock conflicts in benchmarks
     target = create_target(config)
-    docs_dir = config["target"].get("docs_dir")
+    docs_dir = packaged(config["target"].get("docs_dir"))
     temp_chroma_dir = tempfile.mkdtemp(prefix="vigia_chroma_")
     if docs_dir and hasattr(target, "setup"):
         try:
@@ -221,7 +232,7 @@ def run_scan(
             result.total_executed += 1
         except Exception as e:
             result.total_errors += 1
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=fail_on_score, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "unknown"),
                 "owasp": seed.get("owasp"),
@@ -246,9 +257,11 @@ def run_scan(
                 provider=eval_provider,
                 success_threshold=fail_on_score,
             )
+        except JudgeUnavailable:
+            raise
         except Exception as e:
             result.total_errors += 1
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=fail_on_score, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "unknown"),
                 "owasp": seed.get("owasp"),
@@ -258,7 +271,7 @@ def run_scan(
                 "response": target_result["response"],
                 "chunks": target_result.get("chunks", []),
                 "score": -1,
-                "evaluator_reasoning": f"[EVAL_ERROR] {e}",
+                "evaluator_reasoning": f"[EVAL_ERROR] {scrub(e)}",
                 "duration_ms": target_result.get("duration_ms", 0),
             })
             continue
@@ -276,7 +289,7 @@ def run_scan(
         )
         result.findings.append(finding)
 
-        record_attack(conn, campaign_id, {
+        record_attack(conn, campaign_id, threshold=fail_on_score, result={
             "seed_id": seed["id"],
             "vector": seed.get("vector", "unknown"),
             "owasp": seed.get("owasp"),

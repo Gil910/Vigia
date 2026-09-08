@@ -13,10 +13,12 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import evaluate_with_llm, warn_if_self_judging
+from vigia.evaluator import JudgeUnavailable, evaluate_with_llm, warn_if_self_judging
 from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
+from vigia.paths import packaged
 from vigia.prioritizer import prioritize_seeds
 from vigia.providers import token_stats
+from vigia.redaction import scrub
 from vigia.targets import create_target
 
 console = Console()
@@ -25,9 +27,9 @@ console = Console()
 def run_campaign(config_path: str, corpus_path: str):
     """Ejecuta una campaña completa contra cualquier target."""
 
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(corpus_path) as f:
+    with open(corpus_path, encoding="utf-8") as f:
         seeds = json.load(f)
 
     eval_config = config.get("evaluator", {})
@@ -51,7 +53,7 @@ def run_campaign(config_path: str, corpus_path: str):
     target = create_target(config)
 
     # Setup: RAG necesita docs_dir, HTTP necesita verificar endpoint
-    docs_dir = config["target"].get("docs_dir")
+    docs_dir = packaged(config["target"].get("docs_dir"))
     if docs_dir and hasattr(target, 'vectorstore'):
         target.setup(docs_dir)
     else:
@@ -124,7 +126,7 @@ def run_campaign(config_path: str, corpus_path: str):
             total_errors += 1
             console.print(f"  [red]❌ Error target: {e}[/]")
             # Registrar el error en la DB
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "unknown"),
                 "owasp": seed.get("owasp"),
@@ -154,11 +156,16 @@ def run_campaign(config_path: str, corpus_path: str):
                 success_threshold=success_threshold,
                 conn=conn,
             )
+        except JudgeUnavailable:
+            # The judge is gone. Every score from here would be a keyword match
+            # dressed up as a verdict, so let this out rather than logging it
+            # once per remaining seed and finishing the campaign anyway.
+            raise
         except Exception as e:
             total_errors += 1
-            console.print(f"  [red]❌ Error evaluador: {e}[/]")
+            console.print(f"  [red]❌ Error evaluador: {scrub(e)}[/]")
             # Registrar con la respuesta pero sin evaluación
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "unknown"),
                 "owasp": seed.get("owasp"),
@@ -168,7 +175,7 @@ def run_campaign(config_path: str, corpus_path: str):
                 "response": result["response"],
                 "chunks": result.get("chunks", []),
                 "score": -1,
-                "evaluator_reasoning": f"[EVAL_ERROR] Evaluador falló: {e}",
+                "evaluator_reasoning": f"[EVAL_ERROR] Evaluador falló: {scrub(e)}",
                 "duration_ms": result.get("duration_ms", 0),
             })
             continue
@@ -216,7 +223,7 @@ def run_campaign(config_path: str, corpus_path: str):
             evaluation.category[:14], sensitive_str[:40],
         )
 
-        record_attack(conn, campaign_id, {
+        record_attack(conn, campaign_id, threshold=success_threshold, result={
             "seed_id": seed["id"], "vector": seed.get("vector", "unknown"),
             "owasp": seed.get("owasp"), "atlas": seed.get("atlas"),
             "language": seed.get("language"), "prompt": seed["prompt"],
