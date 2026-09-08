@@ -1,5 +1,6 @@
 """Tests para vigia.providers — parseo de JSON y validación de providers."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -90,3 +91,62 @@ class TestOllamaThinking:
                        capture_thinking=True)
         assert "52000€" in out, "a leak in the reasoning must reach the judge"
         assert "<thinking>" in out
+
+
+class TestHostedModelsThatRefuseATemperature:
+    """Algunos modelos alojados rechazan la petición en vez de recortar el valor.
+
+    El juez pide 0.1 para que sus veredictos se repitan. Contra un modelo que
+    solo acepta su temperatura por defecto, eso hacía fallar *todas* las
+    llamadas, y cada fallo se degrada a contar palabras clave: una campaña
+    entera de ceros con pinta de tabla.
+    """
+
+    RESPONSE = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))], usage=None)
+
+    def _litellm(self, calls):
+        mod = SimpleNamespace()
+
+        def completion(**kw):
+            calls.append(kw)
+            if "temperature" in kw:
+                raise RuntimeError("litellm.BadRequestError: OpenAIException - "
+                                   "Unsupported value: 'temperature' does not support "
+                                   "0.1 with this model. Only the default (1) is supported.")
+            return self.RESPONSE
+        mod.completion = completion
+        return mod
+
+    def setup_method(self):
+        from vigia.providers import _NO_TEMPERATURE
+        _NO_TEMPERATURE.clear()
+
+    @patch("vigia.providers.token_stats")
+    def test_it_retries_without_the_temperature(self, _stats):
+        calls = []
+        with patch.dict("sys.modules", {"litellm": self._litellm(calls)}):
+            out = llm_chat("m", [{"role": "user", "content": "hola"}],
+                           provider="litellm", temperature=0.1)
+        assert out == "ok"
+        assert len(calls) == 2
+        assert "temperature" in calls[0] and "temperature" not in calls[1]
+
+    @patch("vigia.providers.token_stats")
+    def test_it_only_learns_that_once_per_model(self, _stats):
+        """Mil llamadas de re-juicio no pueden pagar el descubrimiento mil veces."""
+        calls = []
+        mod = self._litellm(calls)
+        with patch.dict("sys.modules", {"litellm": mod}):
+            for _ in range(3):
+                llm_chat("m", [{"role": "user", "content": "hola"}],
+                         provider="litellm", temperature=0.1)
+        assert len(calls) == 4, "un rechazo la primera vez, y ninguno más"
+
+    @patch("vigia.providers.token_stats")
+    def test_an_unrelated_error_is_not_swallowed(self, _stats):
+        mod = SimpleNamespace(completion=lambda **kw: (_ for _ in ()).throw(
+            RuntimeError("invalid api key")))
+        with patch.dict("sys.modules", {"litellm": mod}), pytest.raises(RuntimeError):
+            llm_chat("m", [{"role": "user", "content": "hola"}],
+                     provider="litellm", temperature=0.1)

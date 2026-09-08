@@ -173,6 +173,11 @@ def _call_ollama(
     return content
 
 
+# Models that refuse an explicit temperature. Discovered on the first rejection
+# and remembered for the rest of the process.
+_NO_TEMPERATURE: set[str] = set()
+
+
 def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
     """Llama al modelo via LiteLLM con retry exponencial para rate limits."""
     try:
@@ -186,14 +191,20 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
             "  export GEMINI_API_KEY=..."
         ) from err
 
+    # Some hosted models accept no temperature but their own default and reject
+    # the request outright rather than clamping it. The judge asks for 0.1 to keep
+    # its verdicts repeatable, so without this every call to such a model fails and
+    # the whole campaign quietly degrades to keyword matching. Remembered per model
+    # so a thousand-call re-judging pays for the discovery once.
+    send_temperature = model not in _NO_TEMPERATURE
+
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = litellm.completion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-            )
+            kwargs = {"model": model, "messages": messages}
+            if send_temperature:
+                kwargs["temperature"] = temperature
+            response = litellm.completion(**kwargs)
             content = response.choices[0].message.content
             # Track tokens from API response (exact counts)
             usage = getattr(response, "usage", None)
@@ -213,6 +224,16 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
         except Exception as e:
             error_str = str(e).lower()
             exc_type = type(e).__name__.lower()
+            if send_temperature and "temperature" in error_str and (
+                    "unsupported" in error_str or "does not support" in error_str
+                    or "only the default" in error_str):
+                print(f"  {model} does not accept a temperature; using its default "
+                      f"from here. Its verdicts will be less repeatable than the "
+                      f"rest — say so if you publish them.")
+                _NO_TEMPERATURE.add(model)
+                send_temperature = False
+                last_error = e
+                continue
             is_retryable = any(
                 kw in error_str or kw in exc_type
                 for kw in (

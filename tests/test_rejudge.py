@@ -195,3 +195,35 @@ class TestGuards:
         con.close()
         mock_llm.side_effect = RuntimeError("connection refused")
         assert run(path, _corpus(tmp), "--campaigns", str(src), "--arm", "full") == 1
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_a_run_where_every_call_failed_is_not_reported_as_a_result(self, mock_llm, db):
+        """Tres llamadas rotas imprimían "0/3 = 0.0%" y salían con éxito.
+
+        El corte por cinco fallos seguidos no llega a dispararse en una tanda
+        corta, que es justo la que se usa como prueba de humo antes de gastar
+        dinero. El primer intento con el juez de OpenAI tenía esta pinta: se
+        veía una tasa, y no había ni un veredicto detrás.
+        """
+        path, src, tmp = db
+        mock_llm.side_effect = RuntimeError(
+            "BadRequestError: Unsupported value: 'temperature' does not support 0.1")
+        assert run(path, _corpus(tmp), "--campaigns", str(src), "--arm", "full") == 1
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_a_partial_failure_is_reported_but_not_fatal(self, mock_llm, db):
+        path, src, tmp = db
+        con = sqlite3.connect(path)
+        for i in range(3):
+            con.execute(
+                "INSERT INTO attacks (campaign_id, seed_id, vector, language, prompt,"
+                " response, score, success, evaluator_reasoning, timestamp)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (src, "S-001", "V01_numerical_anchor", "es-ES", f"p{i}", BOTH, 0, 0, "", "t"))
+        con.commit()
+        con.close()
+        ok = '{"score": 0, "category": "blocked", "reasoning": "x", "sensitive_data_found": []}'
+        mock_llm.side_effect = [ok, ok, RuntimeError("timeout"), ok]
+        assert run(path, _corpus(tmp), "--campaigns", str(src), "--arm", "full") == 1
+        # la campaña existe y conserva los veredictos buenos
+        assert len(attacks(path, campaigns(path)[1]["id"])) == 4
