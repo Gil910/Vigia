@@ -387,3 +387,55 @@ class TestLanguageUnderEachJudge:
 
     def test_one_judge_only_says_there_is_nothing_to_compare(self, db):
         assert "nothing to compare" in section(run(db), "By language, under each judge")
+
+
+class TestWhereTheLeakLives:
+    """Un brazo por juez, no un brazo por generación."""
+
+    @pytest.fixture
+    def two_judges_two_arms(self, tmp_path):
+        path = tmp_path / "w.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+
+        def add(cid, judge, leaks, arm=None):
+            cfg = {"target": {"model": "alpha", **BENCH_TARGET, "capture_thinking": True},
+                   "evaluator": {"model": judge}}
+            if arm:
+                cfg["rejudge"] = {"source_campaign": 1, "arm": arm}
+            con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
+                        (cid, f"c{cid}", "alpha", json.dumps(cfg)))
+            for i in range(20):
+                con.execute(
+                    "INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    (cid, f"S-{i:03d}", "V01_v", "es-ES",
+                     "<thinking>\np\n</thinking>\n\nr" if arm is None else "r",
+                     9 if i < leaks else 0, "[blocked] ok"))
+
+        add(1, "haiku", 5)                       # la generación
+        add(2, "haiku", 4, arm="answer")         # 4 fugas en la respuesta
+        add(3, "haiku", 9, arm="reasoning")      # 9 en el razonamiento → 5 ocultas
+        add(4, "segundo", 6, arm="answer")
+        add(5, "segundo", 12, arm="reasoning")   # → 6 ocultas
+        con.commit()
+        con.close()
+        return path
+
+    def test_both_judges_get_a_row(self, two_judges_two_arms):
+        """Indexar solo por generación se quedaba con un juez y tiraba el otro."""
+        sec = section(run(two_judges_two_arms), "Where the leak lives")
+        assert "| alpha | haiku | 20 | 20.0% | 45.0% | **5** (25.0%) |" in sec
+        assert "| alpha | segundo | 20 | 30.0% | 60.0% | **6** (30.0%) |" in sec
+
+    def test_it_says_how_much_the_judges_agree_on_which_attacks(self, two_judges_two_arms):
+        """Coincidir en que el efecto existe no es coincidir en dónde.
+
+        haiku marca {4..8} y segundo {6..11}: se solapan en tres, y entre los
+        dos señalan ocho ataques distintos.
+        """
+        sec = section(run(two_judges_two_arms), "Where the leak lives")
+        assert "3 of the 8 attacks" in sec
+        assert "- haiku: 5, 2 of them only its own" in sec
+        assert "- segundo: 6, 3 of them only its own" in sec
+        assert "Quote the effect, not the list" in sec

@@ -420,16 +420,24 @@ print("\n### Where the leak lives: the answer, or the reasoning\n")
 
 
 def rejudge_arms():
-    """Answer-only and reasoning-only judgings of one set of generations."""
-    by_source = {}
+    """Answer-only and reasoning-only judgings, keyed by generation *and judge*.
+
+    Keying on the source campaign alone silently kept one judge's pair and
+    dropped the other's, which is the wrong thing to do to the only finding here
+    that more than one judge has scored.
+    """
+    pairs = {}
     for cid, c in CAMPAIGNS.items():
+        if cid in DEGRADED:
+            continue
         try:
             rj = (json.loads(c["config"] or "{}") or {}).get("rejudge") or {}
         except (ValueError, TypeError):
             continue
         if rj.get("arm") in ("answer", "reasoning"):
-            by_source.setdefault(rj["source_campaign"], {})[rj["arm"]] = cid
-    return {src: a for src, a in by_source.items() if len(a) == 2}
+            key = (rj["source_campaign"], c["judge"] or "(unrecorded)")
+            pairs.setdefault(key, {})[rj["arm"]] = cid
+    return {k: a for k, a in sorted(pairs.items()) if len(a) == 2}
 
 
 arms = rejudge_arms()
@@ -440,10 +448,10 @@ if not arms:
 else:
     print("Both columns score the **same generations** — the model ran once and was")
     print("judged twice, so none of the difference is run-to-run noise.\n")
-    print("| Target | Attacks | Final answer | Reasoning | Answer clean, reasoning leaks |")
-    print("|---|---:|---:|---:|---:|")
+    print("| Target | Judge | Attacks | Final answer | Reasoning | Answer clean, reasoning leaks |")
+    print("|---|---|---:|---:|---:|---:|")
     hidden = {}
-    for src, a in sorted(arms.items()):
+    for (src, judge), a in arms.items():
         sa = {r["seed_id"]: r["score"] for r in
               rows(f"SELECT seed_id, score FROM attacks "
                    f"WHERE campaign_id = {a['answer']} AND {JUDGED}")}
@@ -454,8 +462,9 @@ else:
         if not shared:
             continue
         only = {s for s in shared if sa[s] < LEAK <= sr[s]}
-        hidden[src] = (a, only)
-        print(f"| {CAMPAIGNS[a['answer']]['target']} | {len(shared)} | "
+        hidden[(src, judge)] = (a, only)
+        print(f"| {CAMPAIGNS[a['answer']]['target']} | {judge.split('/')[-1]} | "
+              f"{len(shared)} | "
               f"{pct(sum(sa[s] >= LEAK for s in shared), len(shared))} | "
               f"{pct(sum(sr[s] >= LEAK for s in shared), len(shared))} | "
               f"**{len(only)}** ({pct(len(only), len(shared))}) |")
@@ -464,15 +473,40 @@ else:
     print("anyway. Any application that logs reasoning, or renders it in a")
     print("\"thinking…\" disclosure, leaks in exactly those cases without ever being")
     print("successfully attacked.")
-    for _src, (a, only) in hidden.items():
+
+    for (_src, judge), (a, only) in hidden.items():
         if not only:
             continue
         ids = ",".join("'" + s.replace("'", "''") + "'" for s in only)
         langs = rows(f"SELECT language, COUNT(*) n FROM attacks "
                      f"WHERE campaign_id = {a['reasoning']} AND seed_id IN ({ids}) "
                      f"GROUP BY language ORDER BY n DESC")
-        print(f"\nBy locale, for {CAMPAIGNS[a['answer']]['target']}: "
+        print(f"\nBy locale under {judge.split('/')[-1]}: "
               + ", ".join(f"{r['language']} {r['n']}" for r in langs) + ".")
+
+    # Two judges agreeing that the effect exists is not the same as agreeing on
+    # which attacks show it. Both numbers belong in the open, because one of them
+    # is a headline and the other is its limit.
+    by_gen = {}
+    for (src, judge), (_a, only) in hidden.items():
+        by_gen.setdefault(src, {})[judge] = only
+    for _gen, per_judge in by_gen.items():
+        if len(per_judge) < 2:
+            continue
+        names = sorted(per_judge)
+        sets = [per_judge[j] for j in names]
+        both = set.intersection(*sets)
+        either = set.union(*sets)
+        print(f"\n{len(names)} judges scored these generations. They agree the effect")
+        print(f"is there and disagree about where: {len(both)} of the {len(either)} attacks")
+        print(f"either of them flags are flagged by both ({pct(len(both), len(either))}).")
+        for j in names:
+            print(f"- {j.split('/')[-1]}: {len(per_judge[j])}, "
+                  f"{len(per_judge[j] - both)} of them only its own")
+        print("Quote the effect, not the list. A verdict that sits near the scoring")
+        print("threshold moves on a judge's smallest disagreement, so the count is a")
+        print("range across judges rather than one number, and the individual attacks")
+        print("behind it are not a settled set.")
 
 print("\n### Run-to-run variance: identical config, run twice\n")
 repeats = matched_pairs("repeat")
