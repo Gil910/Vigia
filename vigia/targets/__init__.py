@@ -57,7 +57,7 @@ class RAGTarget:
         docs = []
         for fname in sorted(os.listdir(docs_dir)):
             if fname.endswith(".txt"):
-                with open(os.path.join(docs_dir, fname)) as f:
+                with open(os.path.join(docs_dir, fname), encoding="utf-8") as f:
                     content = f.read()
                 docs.append({"content": content, "source": fname})
                 console.print(f"  📄 {fname} ({len(content)} chars)")

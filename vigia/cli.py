@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vigia import __version__
+from vigia.paths import packaged
 
 console = Console()
 
@@ -25,16 +26,45 @@ VIGIA_LOGO = r"""[bold red]
    ╚═══╝   ╚═╝  ╚═════╝  ╚═╝ ╚═╝  ╚═╝[/]"""
 
 
-def _check_ollama() -> str:
-    """Check if Ollama is reachable."""
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+
+def _ollama_models() -> list[str] | None:
+    """The models Ollama has, or None if it cannot be reached."""
     try:
         import urllib.request
-        req = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
-        data = json.loads(req.read())
-        models = [m["name"] for m in data.get("models", [])]
-        return f"[green]● online[/] ({len(models)} models)"
+        req = urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=2)
+        return [m["name"] for m in json.loads(req.read()).get("models", [])]
     except Exception:
-        return "[red]● offline[/]"
+        return None
+
+
+def _check_ollama() -> str:
+    """Check if Ollama is reachable."""
+    models = _ollama_models()
+    return "[red]● offline[/]" if models is None else (
+        f"[green]● online[/] ({len(models)} models)")
+
+
+def _require_ollama(config: dict) -> None:
+    """Stop with something readable if the run needs Ollama and it is not there.
+
+    Without this the first embedding call raises out of langchain and the user
+    gets forty lines of stack trace ending in "Connection refused".
+    """
+    needs = {(config.get(section) or {}).get("provider", "ollama")
+             for section in ("target", "evaluator", "attacker")}
+    if "ollama" not in needs or _ollama_models() is not None:
+        return
+    console.print(Panel(
+        f"No hay ningún Ollama escuchando en [bold]{OLLAMA_HOST}[/].\n\n"
+        "Esta configuración usa modelos locales. Arráncalo con [bold]ollama serve[/] "
+        "y descarga lo que hace falta:\n\n"
+        "  [dim]ollama pull llama3.1:8b && ollama pull nomic-embed-text[/]\n\n"
+        "Si el modelo está en otra máquina, exporta [bold]OLLAMA_HOST[/]. Para usar "
+        "un proveedor remoto, cambia [bold]provider[/] en el YAML de configuración.",
+        title="Ollama no disponible", border_style="red"))
+    sys.exit(2)
 
 
 # The corpora the commands actually fire. Counting every json in the directory
@@ -50,7 +80,7 @@ def _count_seeds() -> int:
     total = 0
     for name in CORPUS_FILES:
         try:
-            with open(os.path.join(seeds_dir, name)) as fh:
+            with open(os.path.join(seeds_dir, name), encoding="utf-8") as fh:
                 total += len(json.load(fh))
         except Exception:
             pass
@@ -121,6 +151,8 @@ def show_welcome():
 def cmd_run(args):
     """Ejecutar una campaña de ataques one-shot."""
     from vigia.runner import run_campaign
+    with open(args.config, encoding="utf-8") as f:
+        _require_ollama(yaml.safe_load(f) or {})
     run_campaign(args.config, args.corpus)
 
 
@@ -128,9 +160,9 @@ def cmd_mutate(args):
     """Generar mutaciones del corpus."""
     from vigia.mutation_engine import MutationEngine
 
-    with open(args.config) as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus) as f:
+    with open(args.corpus, encoding="utf-8") as f:
         seeds = json.load(f)
 
     if args.strategies:
@@ -184,9 +216,9 @@ def cmd_multiturn(args):
     from vigia.providers import token_stats
     from vigia.targets import create_target
 
-    with open(args.config) as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus) as f:
+    with open(args.corpus, encoding="utf-8") as f:
         seeds = json.load(f)
 
     strategy = args.strategy or "rapport_to_extraction"
@@ -215,7 +247,7 @@ def cmd_multiturn(args):
 
     # Setup target via factory (soporta RAG, HTTP, etc.)
     target = create_target(config)
-    docs_dir = config["target"].get("docs_dir")
+    docs_dir = packaged(config["target"].get("docs_dir"))
     if docs_dir and hasattr(target, 'vectorstore'):
         target.setup(docs_dir)
     else:
@@ -350,7 +382,7 @@ def cmd_multiturn(args):
             )
 
             # Guardar en DB (el mejor turno)
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "multiturn"),
                 "owasp": seed.get("owasp"),
@@ -445,7 +477,7 @@ def cmd_agent(args):
         # Auto-generar seeds con el Planner antes de ejecutar
         from vigia.agents.planner import AttackPlanner
 
-        with open(args.config) as f:
+        with open(args.config, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         agent_config = config.get("agent", {})
@@ -479,7 +511,7 @@ def cmd_plan(args):
     """Generar un plan de ataque personalizado para un agente."""
     from vigia.agents.planner import AttackPlanner
 
-    with open(args.config) as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     agent_config = config.get("agent", {})
@@ -684,7 +716,7 @@ def cmd_remediate(args):
 
     from vigia.agents.remediation import RemediationEngine
 
-    with open(args.input) as f:
+    with open(args.input, encoding="utf-8") as f:
         evaluations = json.load(f)
 
     engine = RemediationEngine()
@@ -728,27 +760,29 @@ def cmd_remediate(args):
 
 def main():
     parser = argparse.ArgumentParser(
+        prog="vigia",
         description="VIGÍA — Framework de Red Teaming para LLMs y Agentes AI",
     )
+    parser.add_argument("--version", action="version", version=f"vigia {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     # run
     run_p = subparsers.add_parser("run", help="Campaña one-shot contra chatbot")
-    run_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    run_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    run_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    run_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
 
     # mutate
     mut_p = subparsers.add_parser("mutate", help="Generar mutaciones lingüísticas")
-    mut_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    mut_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    mut_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    mut_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     mut_p.add_argument("-s", "--strategies", default=None)
     mut_p.add_argument("-m", "--max", type=int, default=None)
     mut_p.add_argument("-o", "--output", default=None)
 
     # multiturn
     mt_p = subparsers.add_parser("multiturn", help="Ataques multi-turno contra chatbot")
-    mt_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    mt_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    mt_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    mt_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     mt_p.add_argument("-s", "--strategy", default="rapport_to_extraction",
                       help="Estrategia de persistence")
     mt_p.add_argument("-t", "--turns", type=int, default=None, help="Máximo turnos")
@@ -760,14 +794,14 @@ def main():
 
     # agent
     agent_p = subparsers.add_parser("agent", help="Campaña de ataques contra agente AI con herramientas")
-    agent_p.add_argument("-c", "--config", default="vigia/config/agent_example.yaml")
-    agent_p.add_argument("--corpus", default="vigia/corpus/seeds/agent_seeds.json")
+    agent_p.add_argument("-c", "--config", default=packaged("vigia/config/agent_example.yaml"))
+    agent_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/agent_seeds.json"))
     agent_p.add_argument("--plan", action="store_true",
                          help="Auto-generar seeds con el Attack Planner antes de ejecutar")
 
     # plan (NUEVO)
     plan_p = subparsers.add_parser("plan", help="Generar plan de ataque personalizado para un agente")
-    plan_p.add_argument("-c", "--config", default="vigia/config/agent_example.yaml")
+    plan_p.add_argument("-c", "--config", default=packaged("vigia/config/agent_example.yaml"))
     plan_p.add_argument("-d", "--description", default=None,
                         help="Descripción del agente en lenguaje natural (opcional)")
     plan_p.add_argument("-o", "--output", default=None,
@@ -796,7 +830,7 @@ def main():
     bench_p = subparsers.add_parser("benchmark", help="Compare resistance across multiple models")
     bench_p.add_argument("-c", "--configs", nargs="+", action="extend", default=[],
                          help="Config YAML files to compare (one per model)")
-    bench_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    bench_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     bench_p.add_argument("--threshold", type=int, default=5,
                          help="Score threshold for vulnerability (default: 5)")
     bench_p.add_argument("-f", "--format", choices=["table", "markdown", "json"], default="table",
@@ -808,8 +842,8 @@ def main():
 
     # scan (CI/CD gate)
     scan_p = subparsers.add_parser("scan", help="CI/CD gate — scan and exit with status code")
-    scan_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    scan_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    scan_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    scan_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     scan_p.add_argument("--fail-on-score", type=int, default=5,
                         help="Score threshold to fail the scan (default: 5)")
     scan_p.add_argument("-f", "--format", choices=["summary", "json", "junit"], default="summary",

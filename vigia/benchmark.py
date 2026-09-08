@@ -202,7 +202,7 @@ def run_benchmark(
                 print(f"[vigia] SKIP {cp}: example/schema config", file=sys.stderr)
             continue
         try:
-            with open(cp) as f:
+            with open(cp, encoding="utf-8") as f:
                 c = yaml.safe_load(f)
             if "target" not in c:
                 if not quiet:
