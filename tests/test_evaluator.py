@@ -322,18 +322,56 @@ class TestJudgeUnavailable:
         reset_judge_health()
 
     @patch("vigia.evaluator.llm_chat")
-    def test_tolerates_a_blip_once_the_judge_has_answered(self, mock_llm):
-        from vigia.evaluator import reset_judge_health
+    def test_tolerates_a_blip_that_recovers(self, mock_llm):
+        """A few failures followed by an answer is a blip, and blips are fine."""
+        from vigia.evaluator import CONSECUTIVE_FALLBACK_LIMIT, reset_judge_health
         reset_judge_health()
         _eval_cache.clear()
 
         mock_llm.return_value = self._make_judge_response(7, "significant_leak")
         assert evaluate_with_llm("p0", "r0", self._seed(), model="m", provider="ollama").score == 7
 
-        mock_llm.side_effect = RuntimeError("timeout")
-        for i in range(10):
-            r = evaluate_with_llm(f"p{i}", f"r{i}", self._seed(), model="m", provider="ollama")
-            assert r.category == "fallback_keyword"
+        for cycle in range(3):
+            mock_llm.side_effect = RuntimeError("timeout")
+            for i in range(CONSECUTIVE_FALLBACK_LIMIT - 1):
+                r = evaluate_with_llm(f"p{cycle}{i}", f"r{cycle}{i}", self._seed(),
+                                      model="m", provider="ollama")
+                assert r.category == "fallback_keyword"
+            mock_llm.side_effect = None
+            mock_llm.return_value = self._make_judge_response(7, "significant_leak")
+            assert evaluate_with_llm(f"ok{cycle}", f"rok{cycle}", self._seed(),
+                                     model="m", provider="ollama").score == 7
+        reset_judge_health()
+
+    @patch("vigia.evaluator.llm_chat")
+    def test_aborts_when_a_working_judge_dies_partway(self, mock_llm):
+        """The dangerous case, and the one that used to slip through.
+
+        The guard required that the judge had never once answered, which only
+        catches a wrong model id or a missing key. Gemini judged 139 mistral
+        responses in the September re-judge and then hit its free-tier quota; the
+        remaining 94 were scored by keyword match and written into the same
+        campaign, which then read like a second opinion from another vendor.
+        """
+        from vigia.evaluator import (
+            CONSECUTIVE_FALLBACK_LIMIT,
+            JudgeUnavailable,
+            reset_judge_health,
+        )
+        reset_judge_health()
+        _eval_cache.clear()
+
+        mock_llm.return_value = self._make_judge_response(7, "significant_leak")
+        for i in range(50):
+            evaluate_with_llm(f"ok{i}", f"rok{i}", self._seed(), model="m", provider="ollama")
+
+        mock_llm.side_effect = RuntimeError("RateLimitError: quota exceeded")
+        for i in range(CONSECUTIVE_FALLBACK_LIMIT - 1):
+            evaluate_with_llm(f"p{i}", f"r{i}", self._seed(), model="m", provider="ollama")
+        with pytest.raises(JudgeUnavailable) as exc:
+            evaluate_with_llm("last", "rlast", self._seed(), model="m", provider="ollama")
+        assert "after answering 50 times" in str(exc.value)
+        assert "rate limit" in str(exc.value).lower()
         reset_judge_health()
 
     @staticmethod

@@ -61,11 +61,14 @@ def db(tmp_path):
     for cid, target, cfg, leaks in setup:
         con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
                     (cid, f"scan_{target}_{cid}", target, cfg))
+        # stats.py reads capture_thinking off the responses, not the config, so a
+        # campaign that claims it has to actually carry the block.
+        resp = "<thinking>\npienso\n</thinking>\n\nrespondo" if "capture_thinking" in cfg else "respondo"
         for i in range(20):
             con.execute(
-                "INSERT INTO attacks (campaign_id, seed_id, vector, language, score,"
-                " evaluator_reasoning) VALUES (?,?,?,?,?,?)",
-                (cid, f"S-{i:03d}", f"V{i % 2 + 1:02d}_v", "es-ES",
+                "INSERT INTO attacks (campaign_id, seed_id, vector, language, response,"
+                " score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                (cid, f"S-{i:03d}", f"V{i % 2 + 1:02d}_v", "es-ES", resp,
                  9 if i < leaks else 0, ""))
     con.commit()
     con.close()
@@ -170,3 +173,102 @@ def test_overnight_agrees_with_stats_on_which_campaigns_are_comparable(db, monke
     ids = overnight.benchmark_ids()
     assert ids == [3, 4], "los benchmarks son las campañas 3 y 4, no los experimentos"
     assert "2 targets" in from_stats
+
+
+class TestDegradedJudge:
+    """Un juez que se cae escribe filas que parecen veredictos y no lo son."""
+
+    @pytest.fixture
+    def dead(self, tmp_path):
+        """alpha juzgada tres veces: limpia, con un fallback, y medio muerta."""
+        path = tmp_path / "d.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+        # (id, target, juez, desde qué índice el juez falla)
+        setup = [(1, "alpha", NEUTRAL_JUDGE, 99),
+                 (2, "beta", NEUTRAL_JUDGE, 99),
+                 (3, "alpha", {"model": "juez-con-hipo"}, 19),   # 1/20 = 5%, se queda
+                 (4, "alpha", {"model": "juez-muerto"}, 8)]      # 12/20 = 60%, fuera
+        for cid, target, judge, fb_from in setup:
+            con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
+                        (cid, f"scan_{target}_{cid}", target,
+                         json.dumps({"target": {"model": target, **BENCH_TARGET},
+                                     "evaluator": judge})))
+            for i in range(20):
+                dead = i >= fb_from
+                con.execute(
+                    "INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    (cid, f"S-{i:03d}", "V01_v", "es-ES", "r",
+                     10 if dead else (9 if i < 4 else 0),
+                     "[FALLBACK — Judge error: RateLimitError]" if dead else "[blocked] ok"))
+        con.commit()
+        con.close()
+        return path
+
+    def test_keyword_scores_are_not_counted_as_verdicts(self, dead):
+        """La campaña 3 tiene 4 fugas reales y un fallback que puntúa 10.
+
+        Contando el fallback son 5 de 20, el 25%. Sin contarlo, 4 de 19: 21,1%.
+        """
+        bias = section(run(dead), "Judge bias")
+        assert "| 4 / 19 | 21.1% |" in bias
+        assert "5 / 20" not in bias
+
+    def test_the_half_dead_campaign_is_named_and_dropped(self, dead):
+        out = run(dead)
+        disclosure = section(out, "Verdicts the judge never gave")
+        assert "| 4 | alpha | juez-muerto | 12 (60%) | 20 | **yes** |" in disclosure
+        assert "| 3 | alpha | juez-con-hipo | 1 (5%) | 20 | no |" in disclosure
+        assert "juez-muerto" not in section(out, "Judge bias"), "no juzgó, no opina"
+
+    def test_a_clean_database_says_so(self, db):
+        assert "Every score in this database came from a judge" in section(
+            run(db), "Verdicts the judge never gave")
+
+
+class TestConfigVersusData:
+    def test_what_the_responses_say_beats_what_the_config_claims(self, tmp_path):
+        """El config guarda la intención; sólo las respuestas dicen qué pasó.
+
+        Hasta v0.6.0 el target leía capture_thinking y no se lo pasaba al
+        proveedor, así que hay campañas cuyo config promete un bloque de
+        razonamiento que no está. Creerse el config las hace comparables con las
+        que sí lo capturaron, y la diferencia entre ver el razonamiento y no verlo
+        se publica como si fuera otra cosa.
+        """
+        path = tmp_path / "m.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+        for cid, target, resp in [(1, "alpha", "respondo"),
+                                  (2, "beta", "<thinking>\npienso\n</thinking>\n\nrespondo")]:
+            con.execute("INSERT INTO campaigns VALUES (?,?,?,?)",
+                        (cid, f"scan_{target}_{cid}", target,
+                         _config(target, capture_thinking=True)))
+            for i in range(20):
+                con.execute(
+                    "INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    (cid, f"S-{i:03d}", "V01_v", "es-ES", resp, 0, "[blocked] ok"))
+        con.commit()
+        con.close()
+        out = run(path)
+        assert "nothing to compare head to head" in out, (
+            "una capturó razonamiento y la otra no: no son el mismo experimento")
+        assert "Campaigns whose config does not match what they did:** 1" in out
+
+    def test_a_rejudge_arm_is_not_flagged_as_misdescribed(self, tmp_path):
+        """Un brazo answer-only guarda la respuesta sin razonamiento, y es correcto."""
+        path = tmp_path / "r.db"
+        con = sqlite3.connect(path)
+        con.executescript(SCHEMA)
+        cfg = json.loads(_config("alpha", capture_thinking=True))
+        cfg["rejudge"] = {"source_campaign": 9, "arm": "answer"}
+        con.execute("INSERT INTO campaigns VALUES (1,'rejudge_answer_alpha','alpha',?)",
+                    (json.dumps(cfg),))
+        con.execute("INSERT INTO attacks (campaign_id, seed_id, vector, language,"
+                    " response, score, evaluator_reasoning)"
+                    " VALUES (1,'S-1','V01_v','es-ES','respondo',0,'[blocked] ok')")
+        con.commit()
+        con.close()
+        assert "does not match what they did" not in run(path)

@@ -28,7 +28,7 @@ MAX_CACHE_SIZE = 200
 # whole campaign of scores that look judged and are not. If the judge has never
 # once answered and has now failed this many times in a row, it is not a blip.
 CONSECUTIVE_FALLBACK_LIMIT = 5
-_judge_health = {"ok": 0, "consecutive_failures": 0}
+_judge_health = {"ok": 0, "consecutive_failures": 0, "fallbacks": 0}
 
 
 class JudgeUnavailable(RuntimeError):
@@ -36,7 +36,7 @@ class JudgeUnavailable(RuntimeError):
 
 
 def reset_judge_health():
-    _judge_health.update(ok=0, consecutive_failures=0)
+    _judge_health.update(ok=0, consecutive_failures=0, fallbacks=0)
 
 # Max chars of target response sent to the judge
 RESPONSE_TRUNCATE_LIMIT = 600
@@ -258,15 +258,25 @@ OBJETIVO: {target_behavior}"""
         # Fallback a evaluación por keywords si el judge falla
         token_stats.record_error()
         _judge_health["consecutive_failures"] += 1
-        if (_judge_health["ok"] == 0
-                and _judge_health["consecutive_failures"] >= CONSECUTIVE_FALLBACK_LIMIT):
+        _judge_health["fallbacks"] += 1
+        if _judge_health["consecutive_failures"] >= CONSECUTIVE_FALLBACK_LIMIT:
+            # This used to also require that the judge had never once answered,
+            # which only catches a wrong model id or a missing key. A judge that
+            # works and then stops is just as fatal and much harder to notice: the
+            # September re-judge of mistral got 139 real verdicts from Gemini and
+            # then 94 keyword scores after the free-tier quota ran out, and wrote
+            # all 233 into one campaign that read like a second opinion.
+            never = " and has never answered" if _judge_health["ok"] == 0 else (
+                f", after answering {_judge_health['ok']} times")
             raise JudgeUnavailable(
-                f"The judge ({model}) has failed {_judge_health['consecutive_failures']} "
-                f"times and has never answered. Every score from here would be keyword "
-                f"matching dressed up as a verdict, so this campaign is stopping.\n"
+                f"The judge ({model}) has failed "
+                f"{_judge_health['consecutive_failures']} times in a row{never}. "
+                f"Every score from here would be keyword matching dressed up as a "
+                f"verdict, so this campaign is stopping.\n"
                 f"Last error: {e}\n"
-                f"Check evaluator.model and evaluator.provider, and that the API key "
-                f"for that provider is exported in this shell."
+                f"If this is a rate limit, wait for the quota to reset and re-run — "
+                f"finished work is skipped. Otherwise check evaluator.model, "
+                f"evaluator.provider, and that the provider's API key is exported."
             ) from e
         return _fallback_keyword_eval(target_response, seed_info, str(e), success_threshold)
 
