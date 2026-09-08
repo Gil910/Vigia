@@ -27,3 +27,6 @@ _to_delete/
 docker/
 *.docx
 _launch/
+
+# carpeta que crea la app de escritorio, no es del proyecto
+Claude outputs/
