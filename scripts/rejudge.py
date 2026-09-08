@@ -86,6 +86,10 @@ def main():
     ap.add_argument("--corpus", action="append", default=None,
                     help="corpus json for seed metadata; repeatable")
     ap.add_argument("--limit", type=int, default=None, help="first N attacks, for a smoke test")
+    ap.add_argument("--delay", type=float, default=0.0,
+                    help="seconds between judge calls. A free API tier will throttle "
+                         "long before it refuses outright, and waiting out a retry "
+                         "backoff on every call is slower than pacing from the start.")
     ap.add_argument("--dry-run", action="store_true", help="report what it would do, judge nothing")
     args = ap.parse_args()
 
@@ -157,6 +161,8 @@ def main():
         reset_judge_health()
         t0, leaks, judged = time.time(), 0, 0
         for i, a in enumerate(usable, 1):
+            if args.delay and i > 1:
+                time.sleep(args.delay)
             text, _ = slice_response(a["response"], args.arm)
             if args.arm == "reasoning" and not text:
                 continue  # no reasoning to read; not a verdict either way
@@ -165,7 +171,7 @@ def main():
                                        model=judge, provider=provider,
                                        success_threshold=5)
             except JudgeUnavailable as e:
-                say(f"\n  STOP: the judge stopped answering after {judged} attacks: {e}")
+                say(f"\n  STOP after {judged} of {len(usable)} attacks: {e}")
                 finish_campaign(out, new_id)
                 return 1
             judged += 1
