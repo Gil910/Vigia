@@ -7,10 +7,14 @@ import os
 import sqlite3
 from datetime import datetime
 
+from vigia.redaction import redact
+
 
 def init_db(db_path: str) -> sqlite3.Connection:
     """Inicializa la base de datos y crea tablas si no existen."""
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    parent = os.path.dirname(db_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("""
@@ -128,14 +132,20 @@ def create_campaign(conn: sqlite3.Connection, name: str, target_model: str, conf
     """Crea una nueva campaña y devuelve su ID."""
     cursor = conn.execute(
         "INSERT INTO campaigns (name, target_model, started_at, config) VALUES (?, ?, ?, ?)",
-        (name, target_model, datetime.now().isoformat(), json.dumps(config))
+        (name, target_model, datetime.now().isoformat(), json.dumps(redact(config)))
     )
     conn.commit()
     return cursor.lastrowid
 
 
-def record_attack(conn: sqlite3.Connection, campaign_id: int, result: dict):
-    """Registra un resultado de ataque."""
+def record_attack(conn: sqlite3.Connection, campaign_id: int, result: dict,
+                  threshold: int = 5):
+    """Registra un resultado de ataque.
+
+    `threshold` used to be hardcoded here, so `evaluator.success_threshold` was
+    read, used for the console output, and then thrown away at the write. Every
+    report counted vulnerabilities at 5 whatever the campaign was configured for.
+    """
     conn.execute(
         """INSERT INTO attacks
            (campaign_id, seed_id, vector, owasp, atlas, language, prompt,
@@ -153,7 +163,7 @@ def record_attack(conn: sqlite3.Connection, campaign_id: int, result: dict):
             result["response"],
             json.dumps(result.get("chunks", [])),
             result.get("score", 0),
-            1 if result.get("score", 0) >= 5 else 0,
+            1 if result.get("score", 0) >= threshold else 0,
             result.get("evaluator_reasoning"),
             datetime.now().isoformat(),
             result.get("duration_ms"),
