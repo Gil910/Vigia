@@ -1,4 +1,4 @@
-venv/
+venv*/
 .venv*/
 __pycache__/
 *.pyc
@@ -15,18 +15,23 @@ build/
 npm-global/
 node_modules/
 
-# campaign output: reproducible from a run, not worth versioning
-results/
+# campaign output: reproducible from a run, not worth versioning.
+# The one exception is the database docs/RESULTS.md is generated from — without it
+# nobody can check that the published tables were not edited by hand, which is the
+# only guarantee this repo offers about its own numbers.
+results/*
+!results/vigia_2026-09.db
 *.log
+
+# the default output path of `vigia mutate`, not an input to anything
+vigia/corpus/seeds/seeds_mutated.json
 
 # local agent tooling, not part of the tool
 .claude/
+Claude outputs/
 CLAUDE.md
 LINKEDIN_DRAFT.md
 _to_delete/
 docker/
 *.docx
 _launch/
-
-# carpeta que crea la app de escritorio, no es del proyecto
-Claude outputs/
