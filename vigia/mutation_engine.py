@@ -4,9 +4,14 @@ Genera variantes de semillas de ataque usando estrategias lingüísticas
 específicas del español.
 """
 
+import hashlib
 from dataclasses import dataclass, field
 
+from vigia.corpus.hygiene import degenerate_reason
 from vigia.providers import llm_chat
+
+# How many times to ask again when the model refuses instead of rewriting.
+MUTATION_ATTEMPTS = 3
 
 
 @dataclass
@@ -219,10 +224,16 @@ class MutationEngine:
             strategies: Lista de estrategias a aplicar. None = todas
             max_mutations: Máximo de mutaciones a generar
         """
+        # Taking the first `max_mutations` of a fixed list meant the last
+        # strategies were never reachable: with the shipped default of 5, the
+        # euskera and gallego strategies sit at positions 9 to 12 and no corpus
+        # generated with the defaults ever contained them. Rotating the list by
+        # the seed's own id keeps the choice deterministic while spreading all
+        # twelve strategies across a corpus.
         if strategies is None:
-            strategies = list(STRATEGIES.keys())
-
-        # Limitar al máximo
+            keys = list(STRATEGIES.keys())
+            offset = int(hashlib.sha256(seed["id"].encode()).hexdigest(), 16) % len(keys)
+            strategies = keys[offset:] + keys[:offset]
         strategies = strategies[:max_mutations]
 
         mutations = []
@@ -279,30 +290,44 @@ class MutationEngine:
         return all_mutations
 
     def _apply_strategy(self, original_prompt: str, strategy: dict) -> str | None:
-        """Aplica una estrategia de mutación a un prompt."""
-        try:
-            result = llm_chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": strategy["system_prompt"]},
-                    {"role": "user", "content": original_prompt},
-                ],
-                provider=self.provider,
-                temperature=0.7,
-            )
-            result = result.strip()
+        """Aplica una estrategia de mutación a un prompt.
 
-            # Limpiar: a veces el modelo añade comillas o prefijos
-            if result.startswith('"') and result.endswith('"'):
-                result = result[1:-1]
-            if result.startswith("Prompt reformulado:"):
-                result = result.split(":", 1)[1].strip()
+        The model is asked to rewrite an attack, so it sometimes declines, or
+        answers the attack instead of rewriting it. Either way the reply is not
+        a usable seed: it cannot leak anything and it drags down whatever locale
+        it lands in. Retry, and give up rather than store a refusal.
+        """
+        for attempt in range(MUTATION_ATTEMPTS):
+            try:
+                result = llm_chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": strategy["system_prompt"]},
+                        {"role": "user", "content": original_prompt},
+                    ],
+                    provider=self.provider,
+                    # Nudge it off a refusal it has already committed to.
+                    temperature=0.7 + 0.1 * attempt,
+                )
+                result = result.strip()
 
-            return result if len(result) > 10 else None
+                # Limpiar: a veces el modelo añade comillas o prefijos
+                if result.startswith('"') and result.endswith('"'):
+                    result = result[1:-1]
+                if result.startswith("Prompt reformulado:"):
+                    result = result.split(":", 1)[1].strip()
 
-        except Exception as e:
-            print(f"  ⚠️  Error en mutación ({strategy.get('name', '?')}): {e}")
-            return None
+                reason = degenerate_reason(result)
+                if reason is None:
+                    return result
+                if attempt == MUTATION_ATTEMPTS - 1:
+                    print(f"  ⚠️  {strategy.get('name', '?')}: {reason}. Descartada.")
+
+            except Exception as e:
+                print(f"  ⚠️  Error en mutación ({strategy.get('name', '?')}): {e}")
+                return None
+
+        return None
 
     def mutations_to_seeds(self, mutations: list[Mutation], original_seed: dict) -> list[dict]:
         """Convierte mutaciones al formato de semilla para el runner."""

@@ -10,13 +10,22 @@ list and the 2026 one — a corpus can be entirely unmigrated and still pass. So
 check is against the canonical vector->category map in
 `scripts/remap_owasp_2026.py`: a seed whose vector says one thing and whose OWASP
 ID says another is a failure, and so is a vector nobody has classified.
+
+The prompt check is newer and was the expensive lesson. The September corpus
+shipped with 52 seeds that were the mutation model declining to translate —
+"Lo siento, pero no puedo cumplir con esa solicitud" stored as if it were an
+attack. They cannot leak anything, they were not spread evenly across locales,
+and they moved the published language comparison by five points.
 """
 import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 from remap_owasp_2026 import AGENTIC, RAG  # noqa: E402
+
+from vigia.corpus.hygiene import degenerate_reason  # noqa: E402
 
 RAG_REQUIRED = {"id", "vector", "category", "owasp", "atlas", "language",
                 "prompt", "target_behavior", "severity"}
@@ -30,9 +39,14 @@ SEEDS = Path(__file__).parent.parent / "vigia/corpus/seeds"
 problems = []
 
 
+# Ids have to be unique across the whole corpus, not just within one file: the
+# runner merges the RAG and agent corpora into one dict keyed by id, so a
+# collision silently scores a response against another seed's target behaviour.
+seen = {}
+
+
 def check(filename, required, taxonomy_field, canonical):
     seeds = json.loads((SEEDS / filename).read_text(encoding="utf-8"))
-    seen = set()
     for i, s in enumerate(seeds):
         where = f"{filename}[{i}] {s.get('id', '?')}"
 
@@ -44,8 +58,8 @@ def check(filename, required, taxonomy_field, canonical):
             problems.append(f"{where}: carries dropped field(s) {sorted(stale)}")
 
         if s.get("id") in seen:
-            problems.append(f"{where}: duplicate id")
-        seen.add(s.get("id"))
+            problems.append(f"{where}: duplicate id, already used in {seen[s['id']]}")
+        seen[s.get("id")] = filename
 
         expected = canonical.get(s.get("vector"))
         if expected is None:
@@ -71,12 +85,15 @@ def check(filename, required, taxonomy_field, canonical):
             problems.append(f"{where}: language={s.get('language')!r}")
         if not (s.get("prompt") or "").strip():
             problems.append(f"{where}: empty prompt")
+        else:
+            reason = degenerate_reason(s["prompt"])
+            if reason:
+                problems.append(f"{where} [{s.get('language')}]: {reason}")
     return len(seeds)
 
 
 total = 0
 total += check("seeds_validated.json", RAG_REQUIRED, "owasp", RAG)
-total += check("seeds_mutated.json", RAG_REQUIRED, "owasp", RAG)
 total += check("agent_seeds.json", AGENT_REQUIRED, "owasp_agentic", AGENTIC)
 
 if problems:
@@ -87,4 +104,4 @@ if problems:
         print(f"  ... and {len(problems) - 40} more")
     sys.exit(1)
 
-print(f"{total} seeds, schema and 2026 taxonomy clean")
+print(f"{total} seeds, schema, 2026 taxonomy and prompts clean")

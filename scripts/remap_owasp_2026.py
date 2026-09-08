@@ -87,9 +87,9 @@ def main(root):
     changed = 0
 
     for name in ("seeds_validated.json", "seeds_mutated.json"):
+        if not (root / name).exists():
+            continue   # seeds_mutated.json is scratch output, often absent
         path = root / name
-        if not path.exists():
-            continue
         shutil.copy(path, path.with_suffix(".json.pre2026"))
         seeds = load(path)
         for s in seeds:

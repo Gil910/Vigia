@@ -178,12 +178,14 @@ class TestXmlEscape:
 class TestCorpusSize:
     """El banner dice cuántas semillas hay. Tiene que ser verdad."""
 
-    def test_it_counts_the_corpora_the_commands_fire(self):
+    def test_it_counts_the_corpora_the_commands_fire(self, tmp_path):
         """Contar todos los json del directorio sumaba seeds_mutated.json.
 
-        Ese fichero es la salida cruda de `vigia mutate` y un duplicado del
-        validado, así que el banner anunciaba un corpus casi el doble del que
-        ataca.
+        Ese fichero es la salida por defecto de `vigia mutate`, así que el
+        banner anunciaba un corpus casi el doble del que ataca. Ya no se
+        distribuye, y por eso el señuelo lo pone aquí el test: si dependiera de
+        que hubiera un json de sobra en el directorio, dejaría de distinguir el
+        fallo en cuanto alguien limpiase la carpeta.
         """
         import json
         from pathlib import Path
@@ -191,11 +193,20 @@ class TestCorpusSize:
         from vigia.cli import CORPUS_FILES, _count_seeds
 
         seeds = Path(__file__).resolve().parent.parent / "vigia" / "corpus" / "seeds"
-        expected = sum(len(json.loads((seeds / n).read_text())) for n in CORPUS_FILES)
+        expected = sum(len(json.loads((seeds / n).read_text(encoding="utf-8")))
+                       for n in CORPUS_FILES)
         assert _count_seeds() == expected
-        assert len(list(seeds.glob("*.json"))) > len(CORPUS_FILES), (
-            "si algún día solo quedan los dos ficheros, este test deja de "
-            "distinguir el fallo que lo motivó")
+
+        decoy = seeds / "seeds_mutated.json"
+        assert not decoy.exists(), "el señuelo no puede existir ya"
+        decoy.write_text(json.dumps([{"id": f"X-{i}"} for i in range(7)]),
+                         encoding="utf-8")
+        try:
+            assert _count_seeds() == expected, (
+                f"un json de más en el directorio subió la cuenta a "
+                f"{_count_seeds()}; solo cuentan {CORPUS_FILES}")
+        finally:
+            decoy.unlink()
 
     def test_every_locale_carries_the_same_corpus(self):
         """El hallazgo lingüístico entero depende de esto.
