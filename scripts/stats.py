@@ -842,10 +842,20 @@ for row in rows(f"""SELECT language, COUNT(*) n, COALESCE(SUM({cached_sql}), 0) 
     print(f"| {row['language']} | {row['cached']} | {row['n']} |")
 
 table(
-    "Errored attacks, excluded above",
-    """SELECT c.target_model m, COUNT(*) n
+    "Attacks with no verdict, excluded above",
+    """SELECT c.target_model m, COUNT(*) n,
+              SUM(a.evaluator_reasoning LIKE '[PARSE_ERROR]%') unparsed
        FROM attacks a JOIN campaigns c ON c.id = a.campaign_id
        WHERE a.score < 0 GROUP BY m ORDER BY n DESC""",
-    lambda r: ("| Target | Errored |", "|---|---:|", f"| {r['m']} | {r['n']} |"),
-    empty="None. Every attack in this database reached the judge.",
+    lambda r: ("| Target | No verdict | Of those, the judge replied but not in JSON |",
+               "|---|---:|---:|",
+               f"| {r['m']} | {r['n']} | {r['unparsed'] or 0} |"),
+    empty="None. Every attack in this database got a verdict.",
 )
+if rows("SELECT COUNT(*) c FROM attacks WHERE score < 0")[0]["c"]:
+    print("\nTwo different failures share that column. Most never reached the judge —")
+    print("a timeout, a dead endpoint, an expired key. The last column is the other")
+    print("kind: the judge answered and the answer would not parse. Before v0.6.0")
+    print("that second kind scored 0, so every table counted it as a verdict that")
+    print("the target held, which is the same mistake as counting a timeout as a")
+    print("pass.")

@@ -185,7 +185,7 @@ class TestEmptySections:
         assert "| Strategy |" not in multi
 
     def test_no_errors_says_so(self, db):
-        err = section(run(db), "Errored attacks")
+        err = section(run(db), "Attacks with no verdict")
         assert "None." in err
         assert "| Target |" not in err
 

@@ -353,3 +353,47 @@ def test_a_campaign_config_round_trips_through_the_database(tmp_path):
     assert cfg["evaluator"]["model"] == "anthropic/claude-haiku-4-5"
     assert cfg["target"]["temperature"] == 0.1
     assert cfg["target"]["model"] == "llama3.1:8b"
+
+
+class TestTheShippedConfigsPractiseWhatTheDocsPreach:
+    """A default that demonstrates the anti-pattern the docs spend three sections
+    on is the first thing a reviewer finds. `vigia run` shipped with
+    llama3.1:8b judging llama3.1:8b until v0.6.0."""
+
+    def _configs(self):
+        import pathlib
+
+        import yaml
+        for path in sorted(pathlib.Path("vigia/config").glob("*.yaml")):
+            yield path, yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    def test_no_shipped_config_lets_a_model_judge_itself(self):
+        guilty = {}
+        for path, cfg in self._configs():
+            target = (cfg.get("target") or {}).get("model")
+            judge = (cfg.get("evaluator") or {}).get("model")
+            if target and judge and target == judge:
+                guilty[path.name] = judge
+        assert not guilty, (
+            f"{guilty} — worth about 7 points of inflation, and these are the "
+            f"files a new user runs before reading anything")
+
+    def test_every_config_names_a_judge_and_a_threshold(self):
+        missing = [path.name for path, cfg in self._configs()
+                   if not (cfg.get("evaluator") or {}).get("model")
+                   or (cfg.get("evaluator") or {}).get("success_threshold") is None]
+        assert not missing, f"configs with no usable evaluator block: {missing}"
+
+    def test_the_benchmark_models_all_have_a_config(self):
+        # The five in docs/RESULTS.md. A reader who wants to reproduce a row
+        # should find the file that produced it.
+        import yaml
+        targets = set()
+        for _path, cfg in self._configs():
+            model = (cfg.get("target") or {}).get("model")
+            if model:
+                targets.add(model)
+        assert yaml is not None
+        for model in ("llama3.1:8b", "qwen3:8b", "deepseek-r1:8b", "gemma3:4b",
+                      "mistral"):
+            assert model in targets, f"no shipped config targets {model}"

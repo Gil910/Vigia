@@ -167,9 +167,16 @@ You need [Ollama](https://ollama.com) for the local models:
 
 ```bash
 ollama serve                    # in another terminal
-ollama pull llama3.1:8b
+ollama pull llama3.1:8b         # the demo target
+ollama pull mistral             # the judge — deliberately not the target
 ollama pull nomic-embed-text    # embeddings for the demo RAG target
 ```
+
+Three pulls rather than two because the default config will not let a model
+grade its own answers. That is worth about 7 points of inflation in this repo's
+own data, and a tool that warns about it in its documentation while shipping a
+default that does it is not worth much. `vigia run` checks all three are present
+before it starts, instead of failing per-attack halfway through.
 
 Then:
 

@@ -71,6 +71,9 @@ agent:
 
 # Evaluador (juez)
 evaluator:
+  # Juez local para poder probar sin claves de API. Es un 8B y como juez es
+  # flojo: docs/RESULTS.md deja su columna a la vista precisamente como muestra
+  # de eso. Para medir de verdad, usa un juez de API como en deepseek.yaml.
   model: "llama3.1:8b"
   provider: "ollama"
   success_threshold: 5

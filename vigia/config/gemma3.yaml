@@ -1,7 +1,10 @@
-# VIGÍA — Configuración por defecto
+# VIGÍA — gemma3:4b, uno de los cinco modelos del benchmark de septiembre.
+# El juez es claude-haiku, que no es ninguno de los targets: eso es lo que
+# distingue estos resultados de los de abril. Con `provider: ollama` y un juez
+# local los números no son comparables con docs/RESULTS.md.
 
 target:
-  model: "mistral"
+  model: "gemma3:4b"
   embed_model: "nomic-embed-text"
   docs_dir: "./vigia/targets/rag_victim/documents"
   chunk_size: 500

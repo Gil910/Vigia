@@ -312,6 +312,6 @@ Computed over the 5 comparable campaigns below, not over every campaign in the d
 | es-ES | 0 | 190 |
 | ca-ES | 0 | 180 |
 
-### Errored attacks, excluded above
+### Attacks with no verdict, excluded above
 
-None. Every attack in this database reached the judge.
+None. Every attack in this database got a verdict.

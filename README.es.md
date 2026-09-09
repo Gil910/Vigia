@@ -177,9 +177,16 @@ Necesitas [Ollama](https://ollama.com) para los modelos locales:
 
 ```bash
 ollama serve                    # en otra terminal
-ollama pull llama3.1:8b
+ollama pull llama3.1:8b         # el target de demo
+ollama pull mistral             # el juez, a propósito distinto del target
 ollama pull nomic-embed-text    # embeddings del RAG de demo
 ```
+
+Tres descargas en vez de dos porque la configuración por defecto no deja que un
+modelo se corrija a sí mismo. Eso vale unos 7 puntos de inflación con mis propios
+datos, y una herramienta que avisa de ello en su documentación mientras trae un
+defecto que lo hace no vale gran cosa. `vigia run` comprueba que los tres están
+antes de arrancar, en lugar de caerse ataque a ataque a mitad de campaña.
 
 Y ya:
 

@@ -266,6 +266,28 @@ these now has one.
 - `stats.py` opens the database read-only, and no longer creates an empty file when
   pointed at a path that does not exist.
 
+- **The shipped default config had the target judging itself.** `vigia run` with
+  no arguments ran llama3.1:8b against llama3.1:8b, which is the anti-pattern
+  three sections of METHODOLOGY are about and worth about 7 points of inflation.
+  The default judge is `mistral` now — still local, still one `ollama pull`, and
+  not the target. There is a test that no shipped config self-judges, because
+  this is the kind of thing that comes back.
+- **`warn_if_self_judging` quoted April's numbers** (23.0% against 14.1% over 135
+  attacks) in a release whose whole point is that April's numbers are wrong. It
+  says 25.1% against 17.7% over 175 now, which is what `docs/RESULTS.md` says.
+- **A judge reply that would not parse scored 0**, so every table counted it as a
+  verdict that the target held — the same mistake as counting a timeout as a
+  pass. It scores -1 now and `stats.py` reports it apart from an attack that
+  never reached the judge at all. A non-numeric score (`{"score": "alto"}`) took
+  the same route instead of raising out of the parser and counting towards the
+  five consecutive failures that abort a campaign.
+- **`vigia run` checks the models exist**, not just that Ollama is up. Missing one
+  used to mean a 404 per attack, discovered halfway through a campaign.
+- Config files for the five benchmark models, all judged by claude-haiku, so a
+  reader who wants to reproduce a row in `docs/RESULTS.md` can find the file that
+  produced it. `gemini.yaml` named a model the results never used; `gemma2.yaml`
+  targeted `gemma2:2b` while every published table is `gemma3:4b`.
+
 435 tests plus a new `tests/test_hardening.py`, ruff clean.
 
 ## 0.5.3 — 2026-04-15

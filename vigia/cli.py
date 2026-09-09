@@ -46,25 +46,54 @@ def _check_ollama() -> str:
         f"[green]● online[/] ({len(models)} models)")
 
 
-def _require_ollama(config: dict) -> None:
-    """Stop with something readable if the run needs Ollama and it is not there.
+def _ollama_models_needed(config: dict) -> list[str]:
+    """The Ollama models this config will actually ask for."""
+    wanted = []
+    for section in ("target", "evaluator", "attacker"):
+        block = config.get(section) or {}
+        if block.get("provider", "ollama") == "ollama" and block.get("model"):
+            wanted.append(block["model"])
+    embed = (config.get("target") or {}).get("embed_model")
+    if embed:
+        wanted.append(embed)
+    return sorted(set(wanted))
 
-    Without this the first embedding call raises out of langchain and the user
-    gets forty lines of stack trace ending in "Connection refused".
+
+def _require_ollama(config: dict) -> None:
+    """Stop with something readable if the run needs Ollama and it is not ready.
+
+    Two failures look identical from inside langchain and neither says what to
+    do: Ollama not running, and Ollama running without the model. Both used to
+    surface as forty lines of stack trace ending in "Connection refused" or a
+    404 halfway through a campaign.
     """
-    needs = {(config.get(section) or {}).get("provider", "ollama")
-             for section in ("target", "evaluator", "attacker")}
-    if "ollama" not in needs or _ollama_models() is not None:
+    wanted = _ollama_models_needed(config)
+    if not wanted:
         return
-    console.print(Panel(
-        f"No hay ningún Ollama escuchando en [bold]{OLLAMA_HOST}[/].\n\n"
-        "Esta configuración usa modelos locales. Arráncalo con [bold]ollama serve[/] "
-        "y descarga lo que hace falta:\n\n"
-        "  [dim]ollama pull llama3.1:8b && ollama pull nomic-embed-text[/]\n\n"
-        "Si el modelo está en otra máquina, exporta [bold]OLLAMA_HOST[/]. Para usar "
-        "un proveedor remoto, cambia [bold]provider[/] en el YAML de configuración.",
-        title="Ollama no disponible", border_style="red"))
-    sys.exit(2)
+
+    have = _ollama_models()
+    if have is None:
+        console.print(Panel(
+            f"No hay ningún Ollama escuchando en [bold]{OLLAMA_HOST}[/].\n\n"
+            "Esta configuración usa modelos locales. Arráncalo con "
+            "[bold]ollama serve[/] y descarga lo que hace falta:\n\n"
+            + "\n".join(f"  [dim]ollama pull {m}[/]" for m in wanted) + "\n\n"
+            "Si el modelo está en otra máquina, exporta [bold]OLLAMA_HOST[/]. Para "
+            "usar un proveedor remoto, cambia [bold]provider[/] en el YAML.",
+            title="Ollama no disponible", border_style="red"))
+        sys.exit(2)
+
+    # Ollama reports "mistral:latest" for a model pulled as "mistral".
+    installed = {n.split(":")[0] for n in have} | set(have)
+    missing = [m for m in wanted if m not in installed and m.split(":")[0] not in installed]
+    if missing:
+        console.print(Panel(
+            "Ollama está levantado pero le faltan modelos que pide esta "
+            "configuración:\n\n"
+            + "\n".join(f"  [dim]ollama pull {m}[/]" for m in missing) + "\n\n"
+            "Sin esto la campaña arranca y se cae a mitad con un 404 por ataque.",
+            title="Faltan modelos", border_style="red"))
+        sys.exit(2)
 
 
 # The corpora the commands actually fire. Counting every json in the directory

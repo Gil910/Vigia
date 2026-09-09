@@ -172,7 +172,7 @@ def step_thinking():
     The judging is the part that matters and it happens afterwards, offline, over
     one set of generations: the same responses scored once with the reasoning
     stripped and once with the reasoning alone. Comparing two live campaigns
-    instead would put deepseek's own run-to-run noise — 18% of verdicts flip
+    instead would put deepseek's own run-to-run noise — 22% of verdicts flip
     between two identical runs — on top of the effect being measured.
     """
     import yaml
