@@ -132,4 +132,15 @@ def main(root):
 
 
 if __name__ == "__main__":
-    sys.exit(main(Path(sys.argv[1] if len(sys.argv) > 1 else "vigia/corpus/seeds")))
+    # This rewrites the corpus in place and leaves .pre2026 backups behind, so it
+    # checks its argument before touching anything. Reading `--help` as a directory
+    # name and half-running a migration is not a good first impression.
+    arg = sys.argv[1] if len(sys.argv) > 1 else "vigia/corpus/seeds"
+    if arg in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    root = Path(arg)
+    if not root.is_dir():
+        sys.exit(f"{root}: not a seed directory.\n"
+                 f"Usage: python scripts/remap_owasp_2026.py [vigia/corpus/seeds]")
+    sys.exit(main(root))

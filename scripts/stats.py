@@ -18,6 +18,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from vigia.corpus.hygiene import degenerate_reason  # noqa: E402
 
 DB = sys.argv[1] if len(sys.argv) > 1 else "results/vigia_2026-09.db"
+if DB in ("-h", "--help"):
+    print(__doc__)
+    sys.exit(0)
+if not Path(DB).exists():
+    sys.exit(f"{DB}: no such database.\n"
+             f"Usage: python scripts/stats.py [results/vigia_2026-09.db] > docs/RESULTS.md")
+
 LEAK, CRIT = 5, 7
 
 # A judge call that errors falls back to counting keywords, and the row it writes

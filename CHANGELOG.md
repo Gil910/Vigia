@@ -299,7 +299,13 @@ these now has one.
   out silent. `build` and `twine` moved into a `release` extra so they are not
   installed by the three CI jobs that never publish anything.
 
-507 tests, 70 of them in a new `tests/test_hardening.py`, ruff clean.
+- `scripts/stats.py --help` answered with a sqlite traceback, because the script
+  takes a positional path with a default and read `--help` as a filename.
+  `scripts/remap_owasp_2026.py` did the same, and that one rewrites the corpus in
+  place, so it had already started writing `.pre2026` backups before it failed.
+  Both check their argument now and print usage.
+
+511 tests, 74 of them in a new `tests/test_hardening.py`, ruff clean.
 
 ## 0.5.3 — 2026-04-15
 

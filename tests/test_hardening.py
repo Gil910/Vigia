@@ -431,3 +431,32 @@ class TestThePackagingMetadataIsTheOneSetuptoolsAccepts:
         assert "setuptools>=77" in requires.replace(" ", ""), (
             "PEP 639 metadata needs setuptools 77 or newer; an older pin builds "
             "here and breaks wherever an older one gets resolved")
+
+
+class TestTheScriptsSurviveBeingPokedAt:
+    """Two of the scripts take a positional path with a default and no argparse, so
+    `--help` used to be read as a filename. `stats.py` answered with a sqlite
+    traceback; `remap_owasp_2026.py` is worse, because it rewrites the corpus in
+    place and had already started copying .pre2026 backups before it failed."""
+
+    def _run(self, script, *args):
+        import pathlib
+        import subprocess
+        import sys
+        root = pathlib.Path(__file__).parent.parent
+        return subprocess.run([sys.executable, str(root / "scripts" / script), *args],
+                              capture_output=True, text=True, cwd=root, timeout=120)
+
+    @pytest.mark.parametrize("script", ["stats.py", "remap_owasp_2026.py"])
+    def test_help_is_answered_and_not_raised(self, script):
+        done = self._run(script, "--help")
+        assert done.returncode == 0, done.stderr[-400:]
+        assert "Traceback" not in done.stderr, done.stderr[-400:]
+        assert done.stdout.strip(), "--help printed nothing"
+
+    @pytest.mark.parametrize("script", ["stats.py", "remap_owasp_2026.py"])
+    def test_a_path_that_is_not_there_is_a_message_not_a_traceback(self, script):
+        done = self._run(script, "definitely/not/here")
+        assert done.returncode != 0
+        assert "Traceback" not in done.stderr, done.stderr[-400:]
+        assert "definitely/not/here" in done.stderr
