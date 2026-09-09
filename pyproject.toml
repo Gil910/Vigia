@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,14 +8,14 @@ dynamic = ["version"]
 description = "Red teaming framework for LLMs and AI agents, built around Iberian-language attacks"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "Jordi Gil Nadal", email = "jordigiln@gmail.com"}]
 keywords = ["llm", "red-teaming", "security", "ai-safety", "owasp", "pentesting", "agents", "rag"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: Spanish",
     "Natural Language :: Catalan",
     "Natural Language :: Basque",
@@ -41,6 +41,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.4"]
+# Solo para publicar. Fuera de dev para no meterlo en los tres jobs de CI.
+release = ["build>=1.2", "twine>=5.0"]
 
 [project.urls]
 Homepage = "https://github.com/Gil910/Vigia"

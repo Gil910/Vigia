@@ -397,3 +397,37 @@ class TestTheShippedConfigsPractiseWhatTheDocsPreach:
         for model in ("llama3.1:8b", "qwen3:8b", "deepseek-r1:8b", "gemma3:4b",
                       "mistral"):
             assert model in targets, f"no shipped config targets {model}"
+
+
+class TestThePackagingMetadataIsTheOneSetuptoolsAccepts:
+    """PEP 639 landed in setuptools 77: `license` is an SPDX expression, and an
+    SPDX expression alongside a `License ::` classifier is refused outright. The
+    three keys have to move together — an SPDX string with the old
+    `setuptools>=68` in `[build-system]` builds fine here and fails on a machine
+    that resolves an older one."""
+
+    def _project(self):
+        import pathlib
+        import tomllib
+        return tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    def test_the_license_is_an_spdx_expression(self):
+        project = self._project()["project"]
+        assert isinstance(project.get("license"), str), (
+            "`license = {text = ...}` is the deprecated table form; setuptools "
+            "warns now and stops accepting it in February 2027")
+        assert project.get("license-files"), (
+            "an SPDX expression does not ship LICENSE by itself")
+
+    def test_no_license_classifier_contradicts_it(self):
+        offenders = [c for c in self._project()["project"]["classifiers"]
+                     if c.startswith("License ::")]
+        assert not offenders, (
+            f"{offenders} — setuptools refuses a license expression and a "
+            f"license classifier in the same file")
+
+    def test_the_build_requires_a_setuptools_that_understands_it(self):
+        requires = " ".join(self._project()["build-system"]["requires"])
+        assert "setuptools>=77" in requires.replace(" ", ""), (
+            "PEP 639 metadata needs setuptools 77 or newer; an older pin builds "
+            "here and breaks wherever an older one gets resolved")

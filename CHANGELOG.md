@@ -106,7 +106,7 @@ reason that run happened.
 ### Repository
 
 - `ruff check` and `pytest` run in CI across Python 3.11–3.13, plus a corpus
-  check. Lint went from 174 findings to zero. 373 tests, all green.
+  check. Lint went from 174 findings to zero.
 - `scripts/validate_corpus.py` validates against the canonical vector-to-category
   map, not against the set of legal IDs — LLM01..LLM10 is the same ten strings in
   2023 and 2026, so an ID-only check cannot tell a migrated corpus from an
@@ -288,7 +288,14 @@ these now has one.
   produced it. `gemini.yaml` named a model the results never used; `gemma2.yaml`
   targeted `gemma2:2b` while every published table is `gemma3:4b`.
 
-435 tests plus a new `tests/test_hardening.py`, ruff clean.
+- Packaging metadata migrated to PEP 639: `license = "MIT"` as an SPDX expression
+  plus `license-files`, and the `License :: OSI Approved :: MIT License`
+  classifier dropped, which is the pair setuptools now refuses to accept
+  together. `python -m build` came out with four deprecation warnings and comes
+  out silent. `build` and `twine` moved into a `release` extra so they are not
+  installed by the three CI jobs that never publish anything.
+
+507 tests, 70 of them in a new `tests/test_hardening.py`, ruff clean.
 
 ## 0.5.3 — 2026-04-15
 
