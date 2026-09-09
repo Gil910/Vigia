@@ -18,10 +18,10 @@ from matplotlib.patches import FancyBboxPatch  # noqa: E402
 
 # judge, final-answer rate, chain-of-thought rate, answer-clean-reasoning-leaks
 DATA = [
-    ("claude-haiku-4-5", 23.8, 30.4, 14.4, 26),
-    ("gpt-5.6-luna",     26.0, 35.4, 18.8, 34),
+    ("claude-haiku-4-5", 23.4, 30.3, 14.9, 26),
+    ("gpt-5.6-luna",     26.9, 36.6, 19.4, 34),
 ]
-N = 181
+N = 175
 TOTAL = (f"deepseek-r1:8b, {N} attacks. One generation, judged twice: once on the "
          f"final answer,\nonce on the chain of thought. A leak is a judge score of "
          f"5+ out of 10.")

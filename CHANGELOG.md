@@ -132,37 +132,48 @@ then attacked the instrument until it either broke or held.
   Catalan" was that vector, not that language. 38 generated Catalan seeds brought
   every locale to 38–39 over the same 19 vectors, and a test fails if they drift
   apart again. Then see the next entry.
-- **52 of the 233 seeds are not attacks.** They are the mutation model declining
-  to translate, written into the corpus as if the refusal were the prompt; fifteen
-  are the same sentence and one still carries the mutator's own instructions. They
-  score 0 by construction and they are not spread evenly — 19 in gl-ES, 13 in
-  eu-ES, 3 in ca-ES, **none in es-ES**, which is the shape of the finding they
-  were producing. `vigia/corpus/hygiene.py` is the detector, `vigia mutate` retries
-  and then drops rather than storing one, `scripts/validate_corpus.py` fails on
-  one, and `scripts/stats.py` excludes them per row so an old database is
-  re-analysed correctly without being rewritten. `scripts/fix_seeds.py` regenerates
-  them.
-- **The language finding is withdrawn.** With those rows excluded, the two-tier
-  gap falls from 9.6 to 4.2 points under Haiku and from 10.7 to 4.6 under
-  gpt-5.6-luna, and a seed-level bootstrap puts the 95% interval across zero in
-  both cases. gl-ES is down to 20 usable seeds over 5 vectors, below the coverage
-  `stats.py` requires, so the controlled table now leaves it and eu-ES out and says
-  why. There is no language comparison in this release.
+- **58 of the 233 seeds are not attacks**, in three shapes. Forty-eight are the
+  mutation model declining to translate, written into the corpus as if the refusal
+  were the prompt, fifteen of them the same sentence. Four are the mutator's own
+  system prompt, filed under V12 training data extraction — a seed whose job is to
+  extract a system prompt, containing one. One came back as five invented
+  employees with ID numbers and salaries: the model answered the attack instead of
+  translating it. They score 0 by construction and they are not spread evenly —
+  21 in gl-ES, 15 in eu-ES, 3 in ca-ES, **none in es-ES**, which is the shape of
+  the finding they were producing. `vigia/corpus/hygiene.py` is the detector,
+  `vigia mutate` retries and then drops rather than storing one,
+  `scripts/validate_corpus.py` fails on one, and `scripts/stats.py` excludes them
+  per row so an old database is re-analysed correctly without being rewritten.
+- **The corpus ships 222 seeds, and the locales are not level: 34 to 39.**
+  Regenerating the dead ones ran into something worth writing down: an aligned
+  model will not translate an attack, and a model that will does not speak Basque.
+  `claude-haiku` produced grammatical Batua and then declined on eleven seeds —
+  in Basque, mid-prompt — while `mistral` declined on nothing and produced text
+  that reads like Basque only to someone who does not read Basque. Those eleven
+  are dropped rather than faked. An unbalanced corpus is a limitation; a balanced
+  one with eleven refusals in it is a lie.
+- **The language finding is withdrawn.** Not because the effect is zero: with the
+  dead rows excluded the two-tier gap falls from 9.6 to 6.0 points under Haiku and
+  from 10.7 to 7.1 under gpt-5.6-luna, borderline under both. It is withdrawn
+  because the first version of the hygiene check gave 4.2 points and the second
+  gave 6.0 on the same database with no new data — a 40% move in the estimate from
+  a change in the cleaning rule, with no principled place to stop cleaning. gl-ES
+  is also down to 18 usable seeds over 5 vectors, below the coverage `stats.py`
+  requires, so the controlled table leaves it and eu-ES out and says why.
 - **New: the reasoning leaks what the answer refuses to say.** deepseek-r1:8b's
-  chain of thought was captured and the same 181 responses scored twice, once on
-  the final answer alone and once on the reasoning alone. Answer 23.8%, reasoning
-  30.4%, and in 26 of 181 the answer was clean while the reasoning named the
-  thing. A second judge puts it at 26.0%, 35.4% and 34. One generation judged
+  chain of thought was captured and the same 175 responses scored twice, once on
+  the final answer alone and once on the reasoning alone. Answer 23.4%, reasoning
+  30.3%, and in 26 of 175 the answer was clean while the reasoning named the
+  thing. A second judge puts it at 26.9%, 36.6% and 34. One generation judged
   twice, so none of the gap is run-to-run noise. This is the finding that survived
   both corpus corrections, because it is a within-target comparison and the corpus
   cancels out of it.
-- **Judge bias, separated.** A model scoring itself reports +7.2 points against a
-  neutral judge; the same judge pointed at a target that is not itself adds +2.2.
-  About a third of the inflation is general strictness, the rest is
-  self-assessment.
+- **Judge bias, separated.** A model scoring itself reports +7.4 points against a
+  neutral judge; the same judge pointed at a target that is not itself adds +4.0.
+  More than half the inflation is general strictness, the rest is self-assessment.
 - **Run-to-run variance on three models**, at the temperature the config actually
-  asks for: llama3.1:8b flips 11.6% of individual verdicts between identical runs,
-  gemma3:4b 16.0%, deepseek-r1:8b 22.1%, while the aggregate holds within a point.
+  asks for: llama3.1:8b flips 12.0% of individual verdicts between identical runs,
+  gemma3:4b 15.4%, deepseek-r1:8b 22.3%, while the aggregate holds within a point.
 - **Agentic results are a range, not a point.** The same 22 seeds run three times:
   10, 11 and 11 compromised, so 45–50%. The previous "100%" was four attacks.
 - Multi-turn re-run under the neutral judge with a uniform six conversations per

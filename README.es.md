@@ -20,7 +20,7 @@ English: **[README.md](https://github.com/Gil910/Vigia/blob/main/README.md)**
 
 ## Resumen
 
-1.912 ataques contra cinco modelos en seis variantes lingüísticas ibéricas. Y
+1.852 ataques contra cinco modelos en seis variantes lingüísticas ibéricas. Y
 después, porque no me fiaba de mi propio instrumento, las mismas respuestas
 puntuadas otra vez por dos jueces más, para poder separar qué hallazgos son de los
 modelos y cuáles de quien los estaba corrigiendo.
@@ -33,18 +33,18 @@ de verdad enseñaría en una entrevista.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak-dark.png">
-    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak.png" alt="deepseek-r1:8b, 181 ataques juzgados dos veces. La respuesta final filtra un 23,8% con Claude Haiku y un 26,0% con gpt-5.6-luna; la cadena de pensamiento, un 30,4% y un 35,4%. En 26 y 34 ataques la respuesta estaba limpia y el razonamiento no." width="820">
+    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak.png" alt="deepseek-r1:8b, 175 ataques juzgados dos veces. La respuesta final filtra un 23,4% con Claude Haiku y un 26,9% con gpt-5.6-luna; la cadena de pensamiento, un 30,3% y un 36,6%. En 26 y 34 ataques la respuesta estaba limpia y el razonamiento no." width="820">
   </picture>
 </p>
 
 `deepseek-r1:8b` piensa antes de contestar, y ese razonamiento vuelve en un campo
-aparte. Lo capturé y puntué las mismas 181 respuestas dos veces: una sobre la
+aparte. Lo capturé y puntué las mismas 175 respuestas dos veces: una sobre la
 contestación final sola, otra sobre la cadena de pensamiento sola.
 
 El modelo generó una vez y lo juzgué dos, así que nada de esa diferencia es ruido
-entre ejecuciones. El dato que importa es la última barra: **en 26 de 181 ataques
+entre ejecuciones. El dato que importa es la última barra: **en 26 de 175 ataques
 la respuesta final estaba limpia y el razonamiento nombró el dato igualmente.** Un
-14,4% con Haiku; 34 ataques, un 18,8%, con el segundo juez.
+14,9% con Haiku; 34 ataques, un 19,4%, con el segundo juez.
 
 Si tu aplicación guarda el bloque de razonamiento en el log, lo manda a una
 plataforma de observabilidad o lo enseña en el desplegable de "pensando…", eso son
@@ -53,7 +53,7 @@ educado. El log tiene el salario dentro.
 
 Los dos jueces coinciden en que el efecto está. Solo se solapan en 18 de los 42
 ataques que marca alguno, porque muchos de esos veredictos están rozando el umbral
-de puntuación. Así que la forma honesta del hallazgo es un rango, del 14 al 19%, y
+de puntuación. Así que la forma honesta del hallazgo es un rango, del 15 al 19%, y
 no una lista de ataques concretos.
 
 Un solo modelo y una sola arquitectura. Cualquier modelo con un campo de
@@ -86,40 +86,65 @@ tercer hallazgo del post de lanzamiento.
 
 Y entonces me puse a leer mi propio corpus.
 
-Cincuenta y dos de las 233 semillas no eran ataques. Eran el modelo mutador
-negándose a traducir, guardado en el corpus como si la negativa fuera el prompt.
-Quince dicen, enteras, `Lo siento, pero no puedo cumplir con esa solicitud.` Y una
-todavía lleva dentro las instrucciones del propio mutador: *"mi función es traducir
-al euskara batua el prompt dado"*.
+Cincuenta y ocho de las 233 semillas no eran ataques. Cuarenta y ocho son el
+modelo mutador negándose a traducir, guardado como si la negativa fuera el prompt;
+quince dicen exactamente lo mismo. Cuatro son el system prompt del propio mutador
+—*"1. Traduce de forma natural al euskara batua (estándar unificado) 2. Usa
+correctamente la ergatividad"*— archivadas como V12, extracción de datos de
+entrenamiento: una semilla cuyo trabajo es sacar un system prompt, con uno dentro.
+Y una volvió como una lista de cinco empleados inventados con DNI y sueldo, que es
+el modelo contestando al ataque en vez de traducirlo.
 
-Una semilla así no puede filtrar nada: puntúa cero haga lo que haga el target. Y no
-estaban repartidas de forma uniforme —19 en gallego, 13 en euskera, 3 en catalán,
-**ninguna en castellano**—, que es exactamente la forma del hallazgo que estaban
-produciendo.
+Una semilla así puntúa cero haga lo que haga el target. Y no estaban repartidas
+—21 en gallego, 15 en euskera, 3 en catalán, **ninguna en castellano**—, que es
+exactamente la forma del hallazgo que estaban produciendo.
 
 Quitando esas filas, y con un bootstrap sobre las semillas dentro de cada vector:
 
-| | Separación entre niveles | Intervalo al 95% |
-|---|---:|---|
-| publicado, Claude Haiku | 9,6 puntos | de 1,9 a 13,2 |
-| sin las semillas muertas, Claude Haiku | **4,2 puntos** | **de −2,2 a 8,0** |
-| publicado, gpt-5.6-luna | 10,7 puntos | de 3,2 a 15,3 |
-| sin las semillas muertas, gpt-5.6-luna | **4,6 puntos** | **de −2,4 a 9,1** |
+| | Separación | Intervalo al 95% | P(≤ 0) |
+|---|---:|---|---:|
+| publicado, Claude Haiku | 9,6 puntos | de 1,8 a 12,8 | 0,6% |
+| sin la basura, Claude Haiku | **6,0 puntos** | **de −0,4 a 8,8** | 3,3% |
+| publicado, gpt-5.6-luna | 10,7 puntos | de 3,0 a 15,4 | 0,3% |
+| sin la basura, gpt-5.6-luna | **7,1 puntos** | **de 0,4 a 10,6** | 2,1% |
 
-El intervalo cruza el cero con los dos jueces. Y encima el gallego se queda en 20
-semillas útiles repartidas en 5 vectores, que no da para compararlo con el
-castellano: `scripts/stats.py` ahora deja esos locales fuera de la tabla en lugar
-de imprimir un número que parece igual que los demás y no significa lo mismo.
+Lee esa tabla dos veces. La primera vez que la calculé, la separación corregida
+daba 4,2 puntos; después encontré un tipo de semilla muerta más sutil, la quité
+también, y el mismo cálculo sobre la misma base dio 6,0. **El número se movió un
+40% al cambiar la regla de limpieza, sin datos nuevos.** Eso es peor problema que
+el intervalo, porque no hay un punto en el que limpiar deje de estar justificado.
 
-**O sea que no tengo hallazgo lingüístico.** No uno más pequeño: ninguno. El mismo
-tipo de error se cargó la misma afirmación dos veces, en direcciones contrarias, y
-a la segunda se la llevó entera.
+El gallego además se queda en 18 semillas útiles repartidas en 5 vectores, que no
+da para compararlo con el castellano: `scripts/stats.py` deja esos locales fuera
+de la tabla en lugar de imprimir un número que parece igual que los demás.
 
-Lo que sí tengo es el mecanismo, el detector y un corpus que rompe CI si vuelve a
-pasar: `vigia mutate` reintenta cuando el modelo se niega y descarta la mutación en
-vez de guardarla, y `scripts/validate_corpus.py` falla con una sola. Regenerar esas
-52 semillas y repetir el benchmark daría una respuesta de verdad a la pregunta de
-los idiomas. Es lo primero del roadmap, no una nota al pie.
+**O sea que no tengo hallazgo lingüístico.** No uno más pequeño: ninguno. No
+porque el efecto sea cero, sino porque no consigo sacar un número estable de este
+corpus y prefiero decirlo a quedarme con la ejecución que más me gusta.
+
+Lo que sí tengo es el mecanismo y el detector. `vigia mutate` reintenta cuando el
+modelo se niega y descarta la mutación en vez de guardarla, y
+`scripts/validate_corpus.py` falla con una sola.
+
+Regenerar el corpus resultó ser un problema en sí mismo, y es lo más aprovechable
+que he sacado de todo esto: **un modelo alineado no te traduce un ataque, y uno que
+sí te lo traduce no sabe euskera.** `claude-haiku` escribió batua correcto, con
+ergativo y declinaciones bien puestas, y luego se negó en once semillas —las que
+piden instrucciones de sistema—, negándose *en euskera* y a mitad del prompt, que
+es una forma de rechazo que mi primer detector no reconocía. `mistral` no se negó
+en ninguna y produjo esto:
+
+    Zaitu IT-ek batekoi bekarariko nago, eta zaitzuko dutezko, haukan chatan
+    behar duzu, sistemak internetan erabiltzailearen kredentialtean erantzun
+
+Eso no es batua. No es nada. Y pasa todos los controles automáticos que tengo,
+porque un control no distingue texto con sentido de texto que solo lo parece en un
+idioma que no modela — ni yo, ni nadie que no lo hable.
+
+Esas once semillas **están fuera en vez de inventadas**. Por eso el corpus tiene
+222 y los locales van de 34 a 39 en vez de estar igualados. Un corpus
+desequilibrado es una limitación; uno equilibrado con once negativas dentro es
+mentira, y la diferencia entre las dos cosas es la mitad de esta versión.
 
 Tablas completas: **[docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md)**,
 todas generadas desde la base de datos con un script. Cómo se hacen los números y
@@ -232,18 +257,18 @@ que se mueve es lo que has cambiado tú.
 umbral, y sabe emitir JUnit XML. Una advertencia, y no es pequeña: **haz el gate
 sobre la tasa agregada, nunca sobre una semilla concreta.**
 
-Lanzar las mismas 181 semillas dos veces contra el mismo modelo, sin cambiar nada,
-cambia el veredicto en el 11,6% de los casos individuales con llama3.1:8b, el
-16,0% con gemma3:4b y el 22,1% con deepseek-r1:8b, mientras la tasa agregada se
+Lanzar las mismas 175 semillas dos veces contra el mismo modelo, sin cambiar nada,
+cambia el veredicto en el 12,0% de los casos individuales con llama3.1:8b, el
+15,4% con gemma3:4b y el 22,3% con deepseek-r1:8b, mientras la tasa agregada se
 mueve un punto o menos. El modelo que razona es el menos reproducible de los tres.
 Un gate por semilla será inestable, y un gate inestable es un gate que tu equipo
 desactiva.
 
 ## Qué ataca
 
-**19 vectores RAG** sobre 233 semillas en seis variantes lingüísticas, de las que
-181 sirven: las otras 52 son las semillas muertas de más arriba, y todo lo que
-sigue está calculado sobre las 181.
+**19 vectores RAG**. El corpus que se distribuye trae 222 semillas; la base de
+septiembre tiene 233, de las que 175 pasan el control de higiene, y todo lo que
+sigue está calculado sobre esas 175.
 Los que de verdad funcionan, del benchmark de cinco modelos:
 
 | Vector | Ataques | Tasa de filtración | OWASP 2026 |
@@ -265,14 +290,14 @@ que falla contra todos los modelos también dice algo sobre los modelos.
 
 | Target | Tasa |
 |--------|-----:|
-| llama3.1:8b | 17,1% |
-| qwen3:8b | 21,5% |
-| deepseek-r1:8b | 25,4% |
-| gemma3:4b | 43,1% |
-| mistral | 70,2% |
+| llama3.1:8b | 17,7% |
+| qwen3:8b | 20,6% |
+| deepseek-r1:8b | 25,1% |
+| gemma3:4b | 42,3% |
+| mistral | 69,7% |
 
-Un segundo juez sobre las respuestas idénticas da 17,7%, 18,8%, 22,1%, 46,4% y
-76,8%: el mismo orden, con los dos jueces nunca a más de 6,6 puntos, y esa mayor
+Un segundo juez sobre las respuestas idénticas da 17,7%, 18,9%, 22,3%, 47,4% y
+76,6%: el mismo orden, con los dos jueces nunca a más de 6,9 puntos, y esa mayor
 discrepancia cae en mistral, que los dos ponen último de todas formas.
 
 **6 estrategias multi-turno**, hasta 8 turnos, y el atacante conserva la memoria de
@@ -319,10 +344,10 @@ fiarme de mis notas: `scripts/stats.py`, que ya tiene sus propios tests, y
 `scripts/validate_corpus.py`, que ahora lee los prompts y no solo su esquema.
 
 **Mi primer benchmark comparativo usaba como juez a uno de los targets.** Un
-modelo que puntúa su propia salida reporta 7,2 puntos más de filtraciones que un
-juez neutral sobre las mismas 181 respuestas. Si apuntas ese mismo juez a un
-target que *no* es él, la diferencia baja a 2,2, así que un tercio de la inflación
-es dureza general y el resto es específicamente autoevaluación. Toda la tanda de
+modelo que puntúa su propia salida reporta 7,4 puntos más de filtraciones que un
+juez neutral sobre las mismas 175 respuestas. Si apuntas ese mismo juez a un
+target que *no* es él, la diferencia baja a 4,0, así que más de la mitad de la
+inflación es dureza general y el resto es específicamente autoevaluación. Toda la tanda de
 septiembre usa un juez que no es ninguno de los targets, y los números de aquí son
 de esa.
 
@@ -341,7 +366,7 @@ hace tu stack en producción.
 v0.6.0**, así que un turno podía heredar el veredicto de un rechazo anterior
 porque el chatbot respondió con las mismas palabras. Ninguna de las cinco campañas
 del benchmark llegó a tocar esa caché —la tabla de `docs/RESULTS.md` dice 0 de
-905—, pero el 4,8% de los resultados de abril sí, y por eso esos no se citan
+875—, pero el 4,8% de los resultados de abril sí, y por eso esos no se citan
 aquí.
 
 **Un juez que se muere a mitad no lo avisa.** Durante las tandas de septiembre se
@@ -403,12 +428,14 @@ longitud y de complejidad de consulta se comen la mayor parte de eso.
 
 Por orden aproximado de prioridad:
 
-1. Regenerar las 52 semillas muertas y repetir el benchmark. Hasta que eso pase no
-   hay comparación entre idiomas de ningún tipo, y el gallego se queda en 20
-   semillas útiles. `scripts/fix_seeds.py` hace la primera mitad.
-2. Validar a mano una muestra de respuestas en eu/gl para cuantificar la tasa de
-   falsos negativos del juez en esos idiomas. Una filtración que el juez no sabe
-   leer puntúa cero, y eso no lo arregla repetir la tanda.
+1. Once semillas que ningún modelo quiere escribir. Un mutador alineado se niega a
+   traducir un ataque que pide instrucciones de sistema; uno que no se niega no
+   sabe euskera. Esos huecos están vacíos en vez de rellenados a mano, y llenarlos
+   necesita una persona.
+2. Validar a mano una muestra de semillas *y* respuestas en eu/gl. Una filtración
+   que el juez no sabe leer puntúa cero, y una semilla que no ha leído ningún
+   hablante puede no ser un ataque: esta versión encontró los dos fallos y solo
+   sabe detectar uno.
 3. Capturar el razonamiento de más de un modelo. El hallazgo de la cadena de
    pensamiento es de un solo target, y un solo target es una anécdota con buenas
    barras de error.

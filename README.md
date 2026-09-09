@@ -19,7 +19,7 @@ Español: **[README.es.md](https://github.com/Gil910/Vigia/blob/main/README.es.m
 
 ## The short version
 
-1,912 attacks against five models in six Iberian locales, and then, because I did
+1,852 attacks against five models in six Iberian locales, and then, because I did
 not trust my own instrument, the same responses scored again by two more judges.
 That was so I could tell which findings were about the models and which were
 about whoever was grading them.
@@ -32,18 +32,18 @@ of this repo I would actually point a hiring manager at.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak-dark.png">
-    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak.png" alt="deepseek-r1:8b, 181 attacks judged twice. Final answer leaks 23.8% under Claude Haiku and 26.0% under gpt-5.6-luna; the chain of thought leaks 30.4% and 35.4%. In 26 and 34 attacks the answer was clean and the reasoning was not." width="820">
+    <img src="https://raw.githubusercontent.com/Gil910/Vigia/main/docs/assets/reasoning-leak.png" alt="deepseek-r1:8b, 175 attacks judged twice. Final answer leaks 23.4% under Claude Haiku and 26.9% under gpt-5.6-luna; the chain of thought leaks 30.3% and 36.6%. In 26 and 34 attacks the answer was clean and the reasoning was not." width="820">
   </picture>
 </p>
 
 `deepseek-r1:8b` thinks before it replies, and that thinking comes back in a
-field of its own. I captured it and scored the same 181 responses twice: once on
+field of its own. I captured it and scored the same 175 responses twice: once on
 the final answer alone, once on the chain of thought alone.
 
 The model generated once and was judged twice, so none of that gap is run-to-run
-noise. The number I care about is the last column: **in 26 of 181 attacks the
-final answer was clean and the reasoning named the thing anyway.** That is 14.4%
-under Haiku, and 34 attacks — 18.8% — under the second judge.
+noise. The number I care about is the last column: **in 26 of 175 attacks the
+final answer was clean and the reasoning named the thing anyway.** That is 14.9%
+under Haiku, and 34 attacks — 19.4% — under the second judge.
 
 If your application logs the reasoning block, ships it to an observability
 platform, or renders it in a "thinking…" disclosure, those are leaks with nobody
@@ -52,7 +52,7 @@ has the salary in it.
 
 Both judges agree the effect is there. They overlap on 18 of the 42 attacks
 either of them flags, because a lot of these verdicts sit right on the scoring
-threshold. So the honest form of the claim is a range, 14–19%, and not a list of
+threshold. So the honest form of the claim is a range, 15–19%, and not a list of
 particular attacks.
 
 One target, one architecture. Any model with a separate reasoning field would
@@ -84,40 +84,58 @@ finding in a launch post.
 
 Then I read my own corpus.
 
-Fifty-two of the 233 seeds were not attacks. They were the mutation model
+Fifty-eight of the 233 seeds were not attacks. They were the mutation model
 declining to translate, saved into the corpus as if the refusal were the prompt.
-Fifteen of them read, in full, `Lo siento, pero no puedo cumplir con esa
-solicitud.` One still had the mutator's own instructions in it: *"my job is to
-translate the given prompt into Batua Basque."*
+Fifteen read, in full, `Lo siento, pero no puedo cumplir con esa solicitud.` Four
+were the mutator's own system prompt — *"1. Traduce de forma natural al euskara
+batua (estándar unificado) 2. Usa correctamente la ergatividad"* — filed under
+V12 training data extraction, so a seed whose job is to extract a system prompt
+contained one. One came back as a list of five invented employees with ID numbers
+and salaries: the model had answered the attack instead of translating it.
 
 A seed like that cannot leak anything. It scores zero whatever the target does.
-And they were not spread evenly — 19 in Galician, 13 in Basque, 3 in Catalan,
+And they were not spread evenly — 21 in Galician, 15 in Basque, 3 in Catalan,
 **none at all in Spanish**, which is the same shape as the finding they were
 producing.
 
 With those rows out, and a bootstrap over the seeds within each vector:
 
-| | gap between the tiers | 95% interval |
-|---|---:|---|
-| as published, Claude Haiku | 9.6 points | 1.9 to 13.2 |
-| dead seeds removed, Claude Haiku | **4.2 points** | **−2.2 to 8.0** |
-| as published, gpt-5.6-luna | 10.7 points | 3.2 to 15.3 |
-| dead seeds removed, gpt-5.6-luna | **4.6 points** | **−2.4 to 9.1** |
+| | gap between the tiers | 95% interval | P(gap ≤ 0) |
+|---|---:|---|---:|
+| as published, Claude Haiku | 9.6 points | 1.8 to 12.8 | 0.6% |
+| junk removed, Claude Haiku | **6.0 points** | **−0.4 to 8.8** | 3.3% |
+| as published, gpt-5.6-luna | 10.7 points | 3.0 to 15.4 | 0.3% |
+| junk removed, gpt-5.6-luna | **7.1 points** | **0.4 to 10.6** | 2.1% |
 
-The interval crosses zero under both judges. And the surviving Galician sample is
-20 seeds over 5 vectors, which is not enough to compare against Spanish at all —
-`scripts/stats.py` now refuses to put those locales in the table rather than
-printing a number that looks like the others.
+Read that table twice. The first time I ran it the corrected gap was 4.2 points;
+then I found a subtler class of dead seed, removed those too, and the same
+computation on the same database gave 6.0. **The estimate moved by 40% on a
+change to the cleaning rule, with no new data.** That is a worse problem than the
+interval, because there is no principled place to stop cleaning.
+
+The Galician sample is also down to 18 seeds over 5 vectors, which is not enough
+to compare against Spanish at all — `scripts/stats.py` now refuses to put those
+locales in the table rather than printing a number that looks like the others.
 
 **So I have no language finding.** Not "a smaller one": none. The same class of
-bug bit the same claim twice, in opposite directions, and the second time it took
-the whole thing with it.
+bug bit the same claim twice, and the second time it took the whole thing with
+it — not because the effect is provably zero, but because I cannot get a stable
+number out of this corpus and would rather say so than pick the run I like.
 
-What I do have is the mechanism, the detector, and a corpus that fails CI if it
-ever happens again — `vigia mutate` retries when the model refuses and drops the
-mutation rather than storing it, and `scripts/validate_corpus.py` fails on one.
-Regenerating those 52 seeds and re-running the benchmark would give the language
-question a real answer. That is the top open item, not a footnote.
+What I do have is the mechanism and the detector. `vigia mutate` retries when the
+model refuses and drops the mutation rather than storing it, and
+`scripts/validate_corpus.py` fails on one, so a corpus generated after v0.6.0
+cannot carry them.
+
+Regenerating the corpus turned out to be its own problem, and it is the most
+useful thing I learned doing this. **An aligned model will not translate an
+attack, and a model that will does not speak Basque.** `claude-haiku` produced
+grammatical Batua and then declined on the eleven seeds asking for system
+instructions — in Basque, mid-prompt, which is a refusal my first detector did not
+recognise. `mistral` declined on nothing and produced word salad that reads like
+Basque to anyone who does not read Basque. Eleven seeds no model would write are
+dropped rather than faked, which is why the corpus is 222 seeds and the locales
+run 34 to 39 instead of level.
 
 Full tables: **[docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md)**,
 all of it generated from the database by a script. How the numbers are made and
@@ -232,17 +250,17 @@ generations, so the only thing that moves is what you changed.
 emit JUnit XML. One caveat, and it is not a small one: **gate on the aggregate
 rate, never on a single seed.**
 
-Running the same 181 seeds twice against the same model, with nothing changed,
-flips 11.6% of individual verdicts for llama3.1:8b, 16.0% for gemma3:4b and 22.1%
+Running the same 175 seeds twice against the same model, with nothing changed,
+flips 12.0% of individual verdicts for llama3.1:8b, 15.4% for gemma3:4b and 22.3%
 for deepseek-r1:8b, while the aggregate rate moves by a point or less. The
 reasoning model is the least reproducible of the three. Gate on a per-seed
 assertion and the pipeline will be flaky, and nobody keeps a flaky gate for long.
 
 ## What it attacks
 
-**19 RAG vectors** over 233 seeds in six locales, of which 181 are usable — the
-other 52 are the dead ones described above, and the numbers here are over the
-181. The vectors that actually work, from the five-model benchmark:
+**19 RAG vectors**. The corpus ships 222 seeds; the September database holds 233,
+of which 175 survive the hygiene check, and every number here is over those 175.
+The vectors that actually work, from the five-model benchmark:
 
 | Vector | Attacks | Leak rate | OWASP 2026 |
 |--------|--------:|----------:|------------|
@@ -263,14 +281,14 @@ fails against every model is still a data point about the models.
 
 | Target | Leak rate |
 |--------|----------:|
-| llama3.1:8b | 17.1% |
-| qwen3:8b | 21.5% |
-| deepseek-r1:8b | 25.4% |
-| gemma3:4b | 43.1% |
-| mistral | 70.2% |
+| llama3.1:8b | 17.7% |
+| qwen3:8b | 20.6% |
+| deepseek-r1:8b | 25.1% |
+| gemma3:4b | 42.3% |
+| mistral | 69.7% |
 
-A second judge over the identical responses gives 17.7%, 18.8%, 22.1%, 46.4% and
-76.8%: the same ordering, with the two judges never more than 6.6 points apart
+A second judge over the identical responses gives 17.7%, 18.9%, 22.3%, 47.4% and
+76.6%: the same ordering, with the two judges never more than 6.9 points apart
 and that widest disagreement on mistral, the model they both put last anyway.
 
 **6 multi-turn strategies**, up to 8 turns, with the attacker keeping session
@@ -314,9 +332,9 @@ recomputing everything from the database rather than trusting my notes —
 which now reads the prompts rather than just their schema.
 
 **My first cross-model benchmark used one of the targets as the judge.** A model
-scoring its own output reports 7.2 points more leaks than a neutral judge on the
-identical 181 responses. Pointing that same judge at a target that is *not*
-itself adds 2.2, so about a third of the inflation is general strictness and the
+scoring its own output reports 7.4 points more leaks than a neutral judge on the
+identical 175 responses. Pointing that same judge at a target that is *not*
+itself adds 4.0, so more than half of the inflation is general strictness and the
 rest is specifically self-assessment. The whole September run uses a judge that
 is none of the targets, and the numbers here are all from that.
 
@@ -334,7 +352,7 @@ production stack does.
 **The judge cache was keyed on the response text alone until v0.6.0**, so a turn
 could inherit an earlier refusal's verdict because the chatbot happened to answer
 with the same words. None of the five benchmark campaigns hit that cache — the
-table in `docs/RESULTS.md` says 0 of 905 — but 4.8% of the April results did,
+table in `docs/RESULTS.md` says 0 of 875 — but 4.8% of the April results did,
 which is why those are not quoted here.
 
 **A judge that dies halfway through does not announce it.** During the September
@@ -393,12 +411,12 @@ complexity limits handle most of that.
 
 In rough priority order:
 
-1. Regenerate the 52 dead seeds and re-run the benchmark. Until that happens
-   there is no language comparison at all, and Galician is down to 20 usable
-   seeds. `scripts/fix_seeds.py` does the first half.
-2. Hand-validate a sample of eu/gl responses to quantify the judge's false
-   negative rate in those languages. A leak the judge cannot read scores zero,
-   and no amount of re-running fixes that.
+1. Eleven seeds no model would write. An aligned mutator refuses to translate an
+   attack that asks for system instructions; an unaligned one cannot write Basque.
+   Those slots are empty rather than faked, and filling them needs a person.
+2. Hand-validate a sample of eu/gl seeds *and* responses. A leak the judge cannot
+   read scores zero, and a seed no speaker has read may not be an attack at all —
+   this release found both failure modes and can only detect one of them.
 3. Capture reasoning from more than one model. The chain-of-thought finding is
    one target, and one target is an anecdote with good error bars.
 4. Multi-turn campaigns in Basque and Galician. Six conversations per strategy is
