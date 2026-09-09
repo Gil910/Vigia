@@ -22,6 +22,7 @@ not command Batua. `--locale eu-ES` regenerates the whole locale rather than
 only the seeds the check flags, which is the only way to replace that kind.
 """
 import argparse
+import collections
 import json
 import shutil
 import sys
@@ -56,6 +57,10 @@ def main():
                          "every mechanical check there is.")
     ap.add_argument("--ids", default=None,
                     help="comma-separated seed ids to regenerate regardless")
+    ap.add_argument("--drop", action="store_true",
+                    help="remove the seeds that no model would rewrite, instead of "
+                         "leaving them in. A corpus with eleven fewer seeds is "
+                         "honest; one with eleven refusals in it is not.")
     args = ap.parse_args()
 
     path = Path(args.corpus)
@@ -90,6 +95,20 @@ def main():
     print()
 
     if args.list:
+        return 0
+
+    if args.drop:
+        drop_ids = {s["id"] for s, _ in broken}
+        kept = [s for s in seeds if s["id"] not in drop_ids]
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        shutil.copy(path, path.with_suffix(f".json.{stamp}.bak"))
+        path.write_text(json.dumps(kept, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+        by_locale = collections.Counter(s["language"] for s, _ in broken)
+        print(f"Dropped {len(drop_ids)} seeds, {len(kept)} left. "
+              f"By locale: {dict(by_locale)}")
+        print("The locales are no longer balanced. That is a real limitation and")
+        print("belongs in docs/METHODOLOGY.md, not in a corpus of invented seeds.")
         return 0
 
     todo = broken[:args.limit] if args.limit is not None else broken

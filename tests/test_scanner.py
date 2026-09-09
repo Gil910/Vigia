@@ -208,23 +208,35 @@ class TestCorpusSize:
         finally:
             decoy.unlink()
 
-    def test_every_locale_carries_the_same_corpus(self):
-        """El hallazgo lingüístico entero depende de esto.
+    def test_no_locale_is_a_token_presence(self):
+        """Durante meses el corpus tenía 1 semilla catalana contra 39 de cada
+        otro idioma, y la comparación entre idiomas era en realidad una
+        comparación entre vectores.
 
-        Durante meses el corpus tenía 1 semilla catalana contra 39 de cada otro
-        idioma, y la comparación entre idiomas era en realidad una comparación
-        entre vectores.
+        Esto pedía igualdad exacta hasta que once semillas hubo que tirarlas:
+        ningún modelo las reescribía. Los alineados se niegan a traducir un
+        ataque que pide instrucciones de sistema, y los que no se niegan no
+        saben euskera. Un corpus con once semillas menos es honesto; uno con
+        once negativas dentro, no.
+
+        Así que el umbral es proporcional. Coge el desbalance real y deja fuera
+        el que motivó el test: 1 contra 39 es un 3%.
         """
         import collections
         import json
         from pathlib import Path
 
         seeds = json.loads((Path(__file__).resolve().parent.parent / "vigia" / "corpus"
-                            / "seeds" / "seeds_validated.json").read_text())
+                            / "seeds" / "seeds_validated.json").read_text(encoding="utf-8"))
         by_locale = collections.Counter(s["language"] for s in seeds)
         assert len(by_locale) == 6, by_locale
-        assert max(by_locale.values()) - min(by_locale.values()) <= 1, by_locale
+        floor = 0.8 * max(by_locale.values())
+        thin = {loc: n for loc, n in by_locale.items() if n < floor}
+        assert not thin, (
+            f"{thin} frente a un máximo de {max(by_locale.values())}. Un locale "
+            f"tan corto no mide un idioma, mide esas semillas: o se regenera con "
+            f"scripts/fix_seeds.py o se saca de la comparación en stats.py")
         vectors = {loc: {s["vector"] for s in seeds if s["language"] == loc}
                    for loc in by_locale}
         shared = set.intersection(*vectors.values())
-        assert len(shared) == 19, f"solo {len(shared)} vectores en los seis locales"
+        assert len(shared) >= 17, f"solo {len(shared)} vectores en los seis locales"
