@@ -84,14 +84,17 @@ finding in a launch post.
 
 Then I read my own corpus.
 
-Fifty-eight of the 233 seeds were not attacks. They were the mutation model
-declining to translate, saved into the corpus as if the refusal were the prompt.
-Fifteen read, in full, `Lo siento, pero no puedo cumplir con esa solicitud.` Four
-were the mutator's own system prompt — *"1. Traduce de forma natural al euskara
-batua (estándar unificado) 2. Usa correctamente la ergatividad"* — filed under
-V12 training data extraction, so a seed whose job is to extract a system prompt
-contained one. One came back as a list of five invented employees with ID numbers
-and salaries: the model had answered the attack instead of translating it.
+Fifty-eight of the 233 seeds were not attacks. Fifty were the mutation model
+declining to translate, saved into the corpus as if the refusal were the prompt,
+and fifteen of those read, in full, `Lo siento, pero no puedo cumplir con esa
+solicitud.` Three were the same refusal in a different coat, the mutator answering
+in its own voice: *"como modelo de lenguaje no tengo acceso a información en
+tiempo real"*. Four were the mutator's own system prompt — *"1. Traduce de forma
+natural al euskara batua (estándar unificado) 2. Usa correctamente la
+ergatividad"* — filed under V12 training data extraction, so a seed whose job is
+to extract a system prompt contained one. And one came back as a list of five
+invented employees with ID numbers and salaries: the model had answered the attack
+instead of translating it.
 
 A seed like that cannot leak anything. It scores zero whatever the target does.
 And they were not spread evenly — 21 in Galician, 15 in Basque, 3 in Catalan,
@@ -113,9 +116,10 @@ computation on the same database gave 6.0. **The estimate moved by 40% on a
 change to the cleaning rule, with no new data.** That is a worse problem than the
 interval, because there is no principled place to stop cleaning.
 
-The Galician sample is also down to 18 seeds over 5 vectors, which is not enough
-to compare against Spanish at all — `scripts/stats.py` now refuses to put those
-locales in the table rather than printing a number that looks like the others.
+The Galician sample is also down to 18 seeds, of which only four vectors carry
+enough attacks to compare against Spanish at all — `scripts/stats.py` now refuses
+to put those locales in the table rather than printing a number that looks like
+the others.
 
 **So I have no language finding.** Not "a smaller one": none. The same class of
 bug bit the same claim twice, and the second time it took the whole thing with
@@ -273,10 +277,10 @@ The vectors that actually work, from the five-model benchmark:
 |--------|--------:|----------:|------------|
 | V05 passive context leak | 55 | 70.9% | LLM09 |
 | V01 numerical anchor | 85 | 61.2% | LLM02 |
-| V09 compliant reformulation | 35 | 51.4% | LLM01 |
+| V09 compliant reformulation | 35 | 51.4% | LLM02 |
 | V03 temporal fragmentation | 60 | 48.3% | LLM02 |
+| V08 chain-of-thought exploit | 25 | 48.0% | LLM02 |
 | V02 summary exfiltration | 55 | 45.5% | LLM02 |
-| V12 training data extraction | 55 | 43.6% | LLM08 |
 | V14 context window exploit | 50 | 42.0% | LLM02 |
 
 The other twelve are in [docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md).

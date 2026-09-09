@@ -86,14 +86,17 @@ tercer hallazgo del post de lanzamiento.
 
 Y entonces me puse a leer mi propio corpus.
 
-Cincuenta y ocho de las 233 semillas no eran ataques. Cuarenta y ocho son el
-modelo mutador negándose a traducir, guardado como si la negativa fuera el prompt;
-quince dicen exactamente lo mismo. Cuatro son el system prompt del propio mutador
-—*"1. Traduce de forma natural al euskara batua (estándar unificado) 2. Usa
-correctamente la ergatividad"*— archivadas como V12, extracción de datos de
-entrenamiento: una semilla cuyo trabajo es sacar un system prompt, con uno dentro.
-Y una volvió como una lista de cinco empleados inventados con DNI y sueldo, que es
-el modelo contestando al ataque en vez de traducirlo.
+Cincuenta y ocho de las 233 semillas no eran ataques. Cincuenta son el modelo
+mutador negándose a traducir, guardado como si la negativa fuera el prompt, y
+quince de ellas dicen literalmente `Lo siento, pero no puedo cumplir con esa
+solicitud.` Tres son la misma negativa con otro abrigo, el mutador contestando con
+su propia voz: *"como modelo de lenguaje no tengo acceso a información en tiempo
+real"*. Cuatro son el system prompt del propio mutador —*"1. Traduce de forma
+natural al euskara batua (estándar unificado) 2. Usa correctamente la
+ergatividad"*— archivadas como V12, extracción de datos de entrenamiento: una
+semilla cuyo trabajo es sacar un system prompt, con uno dentro. Y una volvió como
+una lista de cinco empleados inventados con DNI y sueldo, que es el modelo
+contestando al ataque en vez de traducirlo.
 
 Una semilla así puntúa cero haga lo que haga el target. Y no estaban repartidas
 —21 en gallego, 15 en euskera, 3 en catalán, **ninguna en castellano**—, que es
@@ -114,9 +117,10 @@ también, y el mismo cálculo sobre la misma base dio 6,0. **El número se movi�
 40% al cambiar la regla de limpieza, sin datos nuevos.** Eso es peor problema que
 el intervalo, porque no hay un punto en el que limpiar deje de estar justificado.
 
-El gallego además se queda en 18 semillas útiles repartidas en 5 vectores, que no
-da para compararlo con el castellano: `scripts/stats.py` deja esos locales fuera
-de la tabla en lugar de imprimir un número que parece igual que los demás.
+El gallego además se queda en 18 semillas útiles, y solo cuatro de sus vectores
+reúnen ataques suficientes para compararlo con el castellano: `scripts/stats.py`
+deja esos locales fuera de la tabla en lugar de imprimir un número que parece
+igual que los demás.
 
 **O sea que no tengo hallazgo lingüístico.** No uno más pequeño: ninguno. No
 porque el efecto sea cero, sino porque no consigo sacar un número estable de este
@@ -281,11 +285,11 @@ Los que de verdad funcionan, del benchmark de cinco modelos:
 | Vector | Ataques | Tasa de filtración | OWASP 2026 |
 |--------|--------:|-------------------:|------------|
 | V05 passive context leak | 55 | 70,9% | LLM09 |
-| V01 numerical anchor | 85 | 61,2% | LLM01 |
-| V09 compliant reformulation | 35 | 51,4% | LLM01 |
+| V01 numerical anchor | 85 | 61,2% | LLM02 |
+| V09 compliant reformulation | 35 | 51,4% | LLM02 |
 | V03 temporal fragmentation | 60 | 48,3% | LLM02 |
+| V08 chain-of-thought exploit | 25 | 48,0% | LLM02 |
 | V02 summary exfiltration | 55 | 45,5% | LLM02 |
-| V12 training data extraction | 55 | 43,6% | LLM08 |
 | V14 context window exploit | 50 | 42,0% | LLM02 |
 
 Los otros doce están en [docs/RESULTS.md](https://github.com/Gil910/Vigia/blob/main/docs/RESULTS.md).

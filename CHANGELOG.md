@@ -132,13 +132,16 @@ then attacked the instrument until it either broke or held.
   Catalan" was that vector, not that language. 38 generated Catalan seeds brought
   every locale to 38–39 over the same 19 vectors, and a test fails if they drift
   apart again. Then see the next entry.
-- **58 of the 233 seeds are not attacks**, in three shapes. Forty-eight are the
-  mutation model declining to translate, written into the corpus as if the refusal
-  were the prompt, fifteen of them the same sentence. Four are the mutator's own
-  system prompt, filed under V12 training data extraction — a seed whose job is to
-  extract a system prompt, containing one. One came back as five invented
-  employees with ID numbers and salaries: the model answered the attack instead of
-  translating it. They score 0 by construction and they are not spread evenly —
+- **58 of the 233 seeds are not attacks**, in four shapes. Fifty are the mutation
+  model declining to translate, written into the corpus as if the refusal were the
+  prompt, fifteen of them the same sentence. Three are the same refusal in a
+  different coat, the mutator answering in its own voice — *"como modelo de
+  lenguaje no tengo acceso a información en tiempo real"* — which is the shape the
+  first version of the detector missed, because it does not open with an apology.
+  Four are the mutator's own system prompt, filed under V12 training data
+  extraction — a seed whose job is to extract a system prompt, containing one. One
+  came back as five invented employees with ID numbers and salaries: the model
+  answered the attack instead of translating it. They score 0 by construction and they are not spread evenly —
   21 in gl-ES, 15 in eu-ES, 3 in ca-ES, **none in es-ES**, which is the shape of
   the finding they were producing. `vigia/corpus/hygiene.py` is the detector,
   `vigia mutate` retries and then drops rather than storing one,
@@ -158,8 +161,9 @@ then attacked the instrument until it either broke or held.
   because the first version of the hygiene check gave 4.2 points and the second
   gave 6.0 on the same database with no new data — a 40% move in the estimate from
   a change in the cleaning rule, with no principled place to stop cleaning. gl-ES
-  is also down to 18 usable seeds over 5 vectors, below the coverage `stats.py`
-  requires, so the controlled table leaves it and eu-ES out and says why.
+  is also down to 18 usable seeds, only four of whose vectors carry enough attacks
+  to compare, below the coverage `stats.py` requires, so the controlled table
+  leaves it and eu-ES out and says why.
 - **New: the reasoning leaks what the answer refuses to say.** deepseek-r1:8b's
   chain of thought was captured and the same 175 responses scored twice, once on
   the final answer alone and once on the reasoning alone. Answer 23.4%, reasoning
