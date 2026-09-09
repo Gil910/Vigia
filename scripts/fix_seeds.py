@@ -7,16 +7,25 @@ parent seed and the same strategy, and writes them back.
 
     python scripts/fix_seeds.py --list
     python scripts/fix_seeds.py --model mistral
+    python scripts/fix_seeds.py --locale eu-ES --locale es-EU \
+        --model anthropic/claude-haiku-4-5-20251001 --provider litellm
 
 Pick a different model from the one that produced the corpus. The seeds that
 need fixing are the ones llama3.1:8b refused, and asking it again mostly gets
 the same refusal — `mistral` and `qwen3:8b` both decline far less on this
 corpus. Everything else about the seed is left alone: only `prompt` changes.
+
+For Basque, use a hosted model. The hygiene check catches a refusal and a
+mutator that answered instead of rewriting; it cannot catch fluent-looking text
+in a language the model does not actually command, and an 8B local model does
+not command Batua. `--locale eu-ES` regenerates the whole locale rather than
+only the seeds the check flags, which is the only way to replace that kind.
 """
 import argparse
 import json
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -39,14 +48,37 @@ def main():
                     help="name the seeds that need regenerating and stop")
     ap.add_argument("--limit", type=int, default=None,
                     help="only fix this many, for a quick check")
+    ap.add_argument("--locale", action="append", default=None, metavar="LOC",
+                    help="regenerate every seed in this locale, whether or not "
+                         "the hygiene check flags it. Repeatable. Use this when a "
+                         "locale is fluent but wrong — a model with no real command "
+                         "of Basque produces text that reads like Basque and passes "
+                         "every mechanical check there is.")
+    ap.add_argument("--ids", default=None,
+                    help="comma-separated seed ids to regenerate regardless")
     args = ap.parse_args()
 
     path = Path(args.corpus)
     seeds = json.loads(path.read_text(encoding="utf-8"))
     by_id = {s["id"]: s for s in seeds}
 
-    broken = [(s, degenerate_reason(s["prompt"])) for s in seeds]
-    broken = [(s, why) for s, why in broken if why]
+    forced_ids = {i.strip() for i in (args.ids or "").split(",") if i.strip()}
+    forced_locales = set(args.locale or ())
+
+    broken = []
+    for s in seeds:
+        why = degenerate_reason(s["prompt"])
+        if why:
+            broken.append((s, why))
+        elif s["id"] in forced_ids:
+            broken.append((s, "named on the command line"))
+        elif s.get("language") in forced_locales:
+            broken.append((s, f"whole locale {s['language']} asked for"))
+
+    missing = forced_ids - {s["id"] for s, _ in broken}
+    if missing:
+        print(f"No such seed: {', '.join(sorted(missing))}", file=sys.stderr)
+        return 1
 
     if not broken:
         print(f"{len(seeds)} seeds, nothing to fix.")
@@ -85,10 +117,13 @@ def main():
         print(f"         {new_prompt[:100]}")
 
     if fixed:
-        backup = path.with_suffix(".json.bak")
-        if not backup.exists():
-            shutil.copy(path, backup)
-            print(f"\nBacked up to {backup.name}")
+        # One backup per run, not one ever: the first version of this guarded on
+        # `if not backup.exists()`, which found a months-old .bak and quietly
+        # skipped backing up the file that was about to be rewritten.
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = path.with_suffix(f".json.{stamp}.bak")
+        shutil.copy(path, backup)
+        print(f"\nBacked up to {backup.name}")
         path.write_text(json.dumps(seeds, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8")
         print(f"Rewrote {len(fixed)} seeds in {path.name}")
