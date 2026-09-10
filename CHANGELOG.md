@@ -1,5 +1,116 @@
 # Changelog
 
+## 0.6.1 — 2026-09-10
+
+0.6.0 never reached PyPI. A last read-through before uploading found that the
+second command in its own README did not work, so this is that release with the
+review applied on top.
+
+### The package did not work the way the README says
+
+- **`vigia run -c vigia/config/claude_haiku.yaml` raised `FileNotFoundError`.**
+  0.6.0 added `vigia/paths.py` to resolve shipped files against the installed
+  package and wrapped it around the argparse *defaults* only — so `vigia run`
+  with no arguments worked from any directory and every documented invocation
+  that names a config did not, including `cp vigia/config/http_example.yaml
+  mine.yaml`. Resolution happens where the path is opened now, so a path the
+  user typed gets the same treatment as one we shipped, and a path that is
+  nowhere is a sentence naming the shipped configs rather than a traceback.
+- **`vigia mutate` threw away the whole run on its last line.** The default
+  output was `vigia/corpus/seeds/seeds_mutated.json`, which lives inside
+  site-packages after an install and does not exist anywhere else, so a finished
+  mutation campaign — minutes of model calls — died writing it. It writes
+  `seeds_mutated.json` in the working directory.
+- **`vigia run -c mine.yaml` refused to start against an HTTP target.** The
+  model-presence check read `model` out of every config block, and an HTTP
+  target's `model` is a label for the report, which the file itself says in a
+  comment. Pointing Vigia at your own chatbot — the thing the tool is for —
+  asked you to `ollama pull chatbot-empresa-v1`.
+- **The same check accepted the wrong model.** `llama3.1:70b` was satisfied by
+  having `llama3.1:8b`, because the tag relaxation ran in both directions. It
+  now runs only the way Ollama needs it: an untagged name matches any tag, a
+  tagged one has to match exactly.
+- **`vigia scan`, `multiturn`, `mutate` and `agent` skipped the preflight
+  entirely** and died in forty lines of langchain traceback with Ollama down.
+  All of them exit 2 with the same panel `vigia run` prints, and `scan` writes
+  it to stderr so a `--format json` artefact stays parseable.
+
+### A judge that is up and useless
+
+- **A judge that answers and never in JSON reported PASSED on a target that
+  leaked every time.** 0.6.0 made an unparseable verdict score -1 instead of 0,
+  which was right, and then counted it as a healthy answer — resetting the
+  consecutive-failure counter, so `JudgeUnavailable` could never fire, so the
+  scan ended with no findings, no errors and exit 0. Five in a row aborts now.
+- **Parse errors were written to the persistent cache.** The cache stores scores
+  of 2 or less and -1 is less than 2, so one malformed reply was replayed for
+  that prompt in every later campaign, across databases.
+
+### SECURITY.md said credentials never reach disk. They did
+
+- **`redact()` masked by key name only.** `Authorization:` was caught; a Gemini
+  `?key=` in the target URL and a token inside `request_template` were stored
+  verbatim in `campaigns.config` — in the `.db` this project tells people to
+  attach to a report. Leaf strings go through the same masking as error text
+  now, untruncated so a config stays reproducible.
+- The credential pattern was `[a-z]{2}-` plus eight characters, which redacted
+  every seed id and locale tag out of the logs a user debugs with
+  (`Timeout evaluating seed [redacted] after 30s`). It is anchored on `sk-`.
+- An absolute home directory in `database.path` travelled into every stored
+  config. Not a credential, but it is a name on a shared file; it goes in as `~`.
+  The database shipped in `results/` predates this and still carries mine.
+- Exfiltration destinations in the shipped seeds named domains that exist and
+  that I do not own — `evil.com`, `personal-mail.com`, `techcorp.com`. If a
+  user's agent has a real `send_email` tool and complies, that mail leaves. They
+  are `.invalid` and `.example` now, which are reserved and never resolve.
+- `to_junit()` did not escape the target model name and did not strip the
+  control characters XML 1.0 forbids, so a hostile model name or raw judge
+  reasoning produced a report no CI server can parse. `to_json()` reported
+  `passed` next to an exit code of 2.
+- `_judge_health` is process-global and `vigia benchmark` runs several scans in
+  one process, so the second model inherited the first one's failures and could
+  abort on its first hiccup. Each campaign resets it.
+
+### Numbers that were still describing the old corpus
+
+Found by re-deriving every published figure from the committed database and the
+April one, rather than re-reading the prose.
+
+- The RAG vector table in both READMEs listed **V12 at 55 attacks and 43.6%**.
+  Removing the four seeds that were the mutator's own system prompt makes it 35
+  and 34.3%, which drops it out of the top seven; V08 chain-of-thought exploit
+  (25, 48.0%) is the row that belongs there.
+- **V09 was mapped to LLM01** in both READMEs and **V01 in the Spanish one**. The
+  corpus maps both to LLM02 and `validate_corpus.py` enforces it, so the tables
+  disagreed with the data they describe.
+- The Catalan corpus was described as "a single seed covering 76 of its 80
+  attacks". 76 and 80 are the same population under two different filters. In the
+  April database ca-ES has 76 usable attacks, 72 of them that one numerical
+  anchor; the other two seeds are agentic. `es-ES` carried 65 seeds, not 63.
+- METHODOLOGY's score distribution said 404 and 296 where the database says 403
+  and 294 — and 404 + 165 + 13 + 296 is 878, not 875.
+- "18 usable Galician seeds over 5 vectors" was neither number: 18 seeds touching
+  13 vectors, 4 of which carry enough attacks to compare.
+- The dead-seed breakdown listed three shapes adding up to 53 of 58. There are
+  four, and the missing one is the shape the first detector could not see.
+- `README.md` told the reader to reproduce the chain-of-thought finding with
+  `--campaigns 5`, which has no reasoning captured in it. It is campaign 18, as
+  the Spanish README already said.
+- `README.es.md` pointed `stats.py` at a database that is not in the repo, said
+  "two scripts" where the English says three, and asserted that translation
+  quality changes the result — which is the finding this release withdraws.
+- Sample sizes said RAG vectors run 30–85 each; the smallest is 25. Variance was
+  "one in ten to one in five" and "half to two-thirds" where the table says 12–22%
+  and 44–63%. The four agentic rows reading 100% are not all three-out-of-three;
+  one is six of six.
+- RESULTS.md printed "Campaigns whose config does not match what they did: 8",
+  where the 8 is a campaign id and every reader takes it for a count.
+- `scripts/stats.py --help` answered with a sqlite traceback, and
+  `scripts/remap_owasp_2026.py --help` — which rewrites the corpus in place — was
+  already inside `shutil.copy` before it checked its argument.
+
+537 tests, ruff clean.
+
 ## 0.6.0 — 2026-09-08
 
 A correctness release with one new finding in it, and one finding removed.
@@ -126,9 +237,9 @@ then attacked the instrument until it either broke or held.
   targets.** 233 seeds, six locales, five current models — qwen3:8b, gemma3:4b,
   deepseek-r1:8b, mistral and llama3.1:8b as a continuity anchor — judged by
   claude-haiku-4-5. April's numbers are no longer quoted anywhere.
-- **The corpus was balanced, and it was still wrong.** It carried 39 seeds in
-  every locale except Catalan, which had one, covering 76 of its 80 attacks and
-  belonging to one of the two strongest vectors. The published "+24 points for
+- **The corpus was balanced, and it was still wrong.** It carried 38 or 39 seeds
+  in every locale except Catalan, whose single RAG seed covered 72 of its 76
+  usable attacks and belonged to one of the two strongest vectors. The published "+24 points for
   Catalan" was that vector, not that language. 38 generated Catalan seeds brought
   every locale to 38–39 over the same 19 vectors, and a test fails if they drift
   apart again. Then see the next entry.
