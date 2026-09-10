@@ -262,7 +262,7 @@ a judge that died partway through is not a second opinion.
 | 30 | mistral | gemini/gemini-3.5-flash | 4 (100%) | 4 | **yes** |
 | 31 | qwen3:8b | openai/gpt-5.6-luna | 3 (100%) | 3 | **yes** |
 
-**Campaigns whose config does not match what they did:** 8. Each asks for the reasoning
+**1 campaign whose config does not match what it did:** #8. Each asks for the reasoning
 block to be captured and none of their responses contain one. Before
 v0.6.0 the target read `capture_thinking` from the config and never
 passed it to the provider. The tables above go by what is in the

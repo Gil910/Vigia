@@ -75,7 +75,7 @@ se arregla endureciendo el system prompt.
 
 Durante casi todo 2026 este README decía que el catalán era 24 puntos más
 vulnerable que el castellano. Era falso, y lo era porque mi corpus catalán se
-reducía a una semilla que cubría 76 de sus 80 ataques, y esa semilla era un ancla
+reducía a una semilla que cubría 72 de sus 76 ataques, y esa semilla era un ancla
 numérica, uno de los dos vectores más fuertes que tengo. Comparaba un ataque fuerte
 contra una mezcla amplia y a la diferencia la llamaba efecto del idioma.
 
@@ -99,8 +99,9 @@ una lista de cinco empleados inventados con DNI y sueldo, que es el modelo
 contestando al ataque en vez de traducirlo.
 
 Una semilla así puntúa cero haga lo que haga el target. Y no estaban repartidas
-—21 en gallego, 15 en euskera, 3 en catalán, **ninguna en castellano**—, que es
-exactamente la forma del hallazgo que estaban produciendo.
+—21 en gallego, 15 en euskera, 11 y 8 en los dos locales de code-switching, 3 en
+catalán, **ninguna en castellano**—, que es exactamente la forma del hallazgo que
+estaban produciendo.
 
 Quitando esas filas, y con un bootstrap sobre las semillas dentro de cada vector:
 
@@ -160,8 +161,9 @@ Probablemente deberías, junto con esto. Cubren muchísimo más terreno. Vigía 
 por tres cosas que dejan fuera:
 
 - Ataques escritos *en* castellano, catalán, euskera y gallego, en lugar de sondas
-  en inglés traducidas automáticamente en tiempo de ejecución. La calidad de la
-  traducción cambia el resultado, que es justo el hallazgo de arriba.
+  en inglés traducidas automáticamente en tiempo de ejecución. Si la calidad de la
+  traducción cambia el resultado es justo la pregunta que no he sabido contestar
+  ahí arriba, y traducir en tiempo de ejecución la deja sin contestar para siempre.
 - Vectores específicos de RAG que atacan el paso de recuperación, no el modelo.
   Adyacencia de chunks, exfiltración por resumen, inyección indirecta a través de
   un documento indexado.
@@ -248,12 +250,14 @@ vigia scan --format junit -o report.xml
 vigia strategies                             # qué hay disponible
 ```
 
-Dos scripts hacen el análisis, y todo lo que se publica aquí sale de ellos:
+Tres scripts hacen el análisis, y todo lo que se publica aquí sale de ellos. Viven
+en el repositorio y no en el wheel, así que para esta parte hace falta un clone:
 
 ```bash
-python scripts/stats.py results/vigia.db > docs/RESULTS.md   # todas las tablas
-python scripts/rejudge.py --campaigns 3,4,5 --judge openai/… # puntuar otra vez
-python scripts/rejudge.py --campaigns 18 --arm reasoning     # respuestas guardadas
+python scripts/stats.py results/vigia_2026-09.db > docs/RESULTS.md # las tablas
+python scripts/rejudge.py --campaigns 3,4,5 --judge openai/…  # puntuar otra vez
+python scripts/rejudge.py --campaigns 18 --arm reasoning      # lo ya guardado
+python scripts/validate_corpus.py                             # antes de fiarte
 ```
 
 `rejudge.py` es el que hizo posible casi todo esto. Generar es la mitad cara de
@@ -337,8 +341,8 @@ un 45-50%. La cobertura es parcial y está
 [documentada como tal](https://github.com/Gil910/Vigia/blob/main/docs/TAXONOMY.md#owasp-top-10-for-agentic-applications-2026):
 todavía no hay nada para compromiso de la cadena de suministro, ejecución de
 código inesperada, fallos en cascada, explotación de la confianza humano-agente ni
-agentes rogue. Los dos últimos necesitan un target multiagente que Vigía no
-incluye.
+agentes rogue. Los fallos en cascada y los agentes rogue necesitan un target
+multiagente que Vigía no incluye.
 
 ## Qué hace mal
 
