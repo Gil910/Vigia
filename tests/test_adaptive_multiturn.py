@@ -1,15 +1,11 @@
 """Tests para AttackerAgent adaptativo — strategy selection, intel injection, hooks."""
 
-import sqlite3
-from unittest.mock import patch, MagicMock, call
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from vigia.attacker import AttackerAgent, PERSISTENCE_STRATEGIES
+from vigia.attacker import PERSISTENCE_STRATEGIES, AttackerAgent
 from vigia.database import init_db, record_learning
-from vigia.hooks import HookRegistry, HookEvent, HookContext
-
+from vigia.hooks import HookEvent, HookRegistry
 
 # ── Helpers ───────────────────────────────────────────────────
 

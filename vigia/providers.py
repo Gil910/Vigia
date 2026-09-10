@@ -5,10 +5,9 @@ Elimina duplicación entre attacker, evaluator y mutation_engine.
 """
 
 import json
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +83,9 @@ def llm_chat(
     messages: list[dict],
     provider: str = "ollama",
     temperature: float = 0.3,
+    options: dict | None = None,
+    think: bool | None = None,
+    capture_thinking: bool = False,
 ) -> str:
     """
     Envía mensajes a un LLM y devuelve el texto de respuesta.
@@ -93,6 +95,11 @@ def llm_chat(
         messages: Lista de mensajes [{"role": "system/user/assistant", "content": "..."}]
         provider: "ollama" para local, "litellm" para APIs externas
         temperature: Temperatura de generación (0.0-1.0)
+        options: opciones extra de Ollama; `num_predict` acota cuánto puede tardar
+            una sola respuesta. Ignorado con litellm.
+        think: desactiva el razonamiento en modelos híbridos. Ignorado con litellm.
+        capture_thinking: incluye el bloque de razonamiento en el texto devuelto,
+            para que el juez lo puntúe. Ignorado con litellm.
 
     Returns:
         Texto de respuesta del modelo
@@ -102,22 +109,61 @@ def llm_chat(
         RuntimeError: Si litellm no está instalado o hay error de conexión
     """
     if provider == "ollama":
-        return _call_ollama(model, messages, temperature)
+        return _call_ollama(model, messages, temperature, options, think, capture_thinking)
     elif provider == "litellm":
         return _call_litellm(model, messages, temperature)
     else:
         raise ValueError(f"Provider no soportado: {provider}. Usa 'ollama' o 'litellm'.")
 
 
-def _call_ollama(model: str, messages: list[dict], temperature: float) -> str:
-    """Llama al modelo via Ollama local."""
+def _call_ollama(
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    options: dict | None = None,
+    think: bool | None = None,
+    capture_thinking: bool = False,
+) -> str:
+    """Llama al modelo via Ollama local.
+
+    `options` goes straight to Ollama; the one that matters is num_predict, which
+    bounds how long a single answer can take. Without it a hybrid reasoning model
+    like qwen3 will happily spend twenty minutes thinking about one question, and
+    a campaign of 233 seeds stops being something you can run overnight.
+
+    `think` switches reasoning off on models that support it. Worth doing when the
+    target is standing in for a customer-facing RAG chatbot, which is not a thing
+    anyone deploys with visible chain-of-thought — and worth leaving on when the
+    question is precisely what reasoning does to leakage.
+
+    Ollama returns reasoning in a separate `thinking` field, not in the message
+    content, so by default it is generated and thrown away — the September 2026
+    run scored deepseek-r1 on its final answers only and can say nothing about
+    what its reasoning contained. `capture_thinking` appends it so the judge sees
+    it, which is the experiment: an application that logs or renders reasoning
+    leaks whatever is in there, whether or not the final answer is clean.
+    """
     import ollama
-    response = ollama.chat(
-        model=model,
-        messages=messages,
-        options={"temperature": temperature},
-    )
+    opts = {"temperature": temperature}
+    if options:
+        opts.update(options)
+    kwargs = {"model": model, "messages": messages, "options": opts}
+    if think is not None:
+        kwargs["think"] = think
+    try:
+        response = ollama.chat(**kwargs)
+    except Exception as e:
+        # older models reject `think` outright; retry without it rather than
+        # failing an eight-hour campaign over one keyword
+        if think is None or "think" not in str(e).lower():
+            raise
+        kwargs.pop("think")
+        response = ollama.chat(**kwargs)
     content = response["message"]["content"]
+    if capture_thinking:
+        reasoning = (response["message"].get("thinking") or "").strip()
+        if reasoning:
+            content = f"<thinking>\n{reasoning}\n</thinking>\n\n{content}"
     # Track tokens (Ollama returns actual counts in some versions)
     prompt_toks = response.get("prompt_eval_count", _estimate_tokens(
         "".join(m["content"] for m in messages)
@@ -127,27 +173,38 @@ def _call_ollama(model: str, messages: list[dict], temperature: float) -> str:
     return content
 
 
+# Models that refuse an explicit temperature. Discovered on the first rejection
+# and remembered for the rest of the process.
+_NO_TEMPERATURE: set[str] = set()
+
+
 def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
     """Llama al modelo via LiteLLM con retry exponencial para rate limits."""
     try:
         import litellm
-    except ImportError:
+    except ImportError as err:
         raise RuntimeError(
             "litellm no instalado. Ejecuta: pip install litellm\n"
             "Y configura la API key correspondiente:\n"
             "  export ANTHROPIC_API_KEY=sk-...\n"
             "  export OPENAI_API_KEY=sk-...\n"
             "  export GEMINI_API_KEY=..."
-        )
+        ) from err
+
+    # Some hosted models accept no temperature but their own default and reject
+    # the request outright rather than clamping it. The judge asks for 0.1 to keep
+    # its verdicts repeatable, so without this every call to such a model fails and
+    # the whole campaign quietly degrades to keyword matching. Remembered per model
+    # so a thousand-call re-judging pays for the discovery once.
+    send_temperature = model not in _NO_TEMPERATURE
 
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = litellm.completion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-            )
+            kwargs = {"model": model, "messages": messages}
+            if send_temperature:
+                kwargs["temperature"] = temperature
+            response = litellm.completion(**kwargs)
             content = response.choices[0].message.content
             # Track tokens from API response (exact counts)
             usage = getattr(response, "usage", None)
@@ -167,6 +224,16 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
         except Exception as e:
             error_str = str(e).lower()
             exc_type = type(e).__name__.lower()
+            if send_temperature and "temperature" in error_str and (
+                    "unsupported" in error_str or "does not support" in error_str
+                    or "only the default" in error_str):
+                print(f"  {model} does not accept a temperature; using its default "
+                      f"from here. Its verdicts will be less repeatable than the "
+                      f"rest — say so if you publish them.")
+                _NO_TEMPERATURE.add(model)
+                send_temperature = False
+                last_error = e
+                continue
             is_retryable = any(
                 kw in error_str or kw in exc_type
                 for kw in (
@@ -189,7 +256,7 @@ def _call_litellm(model: str, messages: list[dict], temperature: float) -> str:
     raise last_error  # type: ignore[misc]
 
 
-def parse_json_response(raw: str) -> Optional[dict]:
+def parse_json_response(raw: str) -> dict | None:
     """
     Intenta extraer un objeto JSON de una respuesta de LLM.
     Maneja backticks de markdown, texto antes/después del JSON, etc.

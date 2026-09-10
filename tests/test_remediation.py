@@ -1,13 +1,13 @@
 """Tests para vigia.agents.remediation — Remediation Engine."""
 
-import pytest
 from unittest.mock import patch
 
 from vigia.agents.remediation import (
-    RemediationEngine, RemediationReport, Countermeasure,
     COUNTERMEASURE_KB,
+    Countermeasure,
+    RemediationEngine,
+    RemediationReport,
 )
-
 
 # ─── Helpers ─────────────────────────────────────────────────
 
@@ -300,24 +300,33 @@ class TestArchitectureRecommendations:
 class TestGenerateSummary:
     def test_no_vulns_summary(self):
         engine = _make_engine()
-        vuln_dims = {
-            "goal_hijacking": [], "tool_misuse": [],
-            "privilege_escalation": [], "unauthorized_action": [],
-            "info_disclosure": [],
-        }
-        summary = engine._generate_summary(vuln_dims)
+        evals = [_make_eval(overall=2, hijack=2)]
+        dims = engine._classify_vulnerabilities(evals, threshold=5)
+        summary = engine._generate_summary(dims, evals, 5)
         assert "robusta" in summary.lower() or "no se detectaron" in summary.lower()
 
     def test_vulns_summary(self):
         engine = _make_engine()
-        vuln_dims = {
-            "goal_hijacking": [{}, {}], "tool_misuse": [{}],
-            "privilege_escalation": [], "unauthorized_action": [],
-            "info_disclosure": [],
-        }
-        summary = engine._generate_summary(vuln_dims)
-        assert "3 vulnerabilidades" in summary
+        evals = [_make_eval(overall=8, hijack=8), _make_eval(overall=7, hijack=7),
+                 _make_eval(overall=6, misuse=6), _make_eval(overall=1)]
+        dims = engine._classify_vulnerabilities(evals, threshold=5)
+        summary = engine._generate_summary(dims, evals, 5)
+        assert "3 de 4 ataques" in summary
         assert "Goal Hijacking" in summary
+
+    def test_one_attack_failing_two_dimensions_counts_once(self):
+        """The count is attacks compromised, not dimension cells ticked.
+
+        Summing the per-dimension lists counted an attack once per dimension it
+        tripped. The September agentic run printed "38 vulnerabilidades" over 22
+        attacks three lines under a table that said 10.
+        """
+        engine = _make_engine()
+        evals = [_make_eval(overall=9, hijack=9, misuse=8, info=7, unauth=6, priv=5)]
+        dims = engine._classify_vulnerabilities(evals, threshold=5)
+        assert sum(len(v) for v in dims.values()) == 5, "five dimensions tripped"
+        assert engine._count_vulnerable(evals, 5) == 1
+        assert "1 de 1 ataques" in engine._generate_summary(dims, evals, 5)
 
 
 # ─── Tests de generate_report (integración) ──────────────────

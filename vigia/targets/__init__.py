@@ -1,6 +1,5 @@
 """
-VIGÍA — Target Connectors v0.1
-Conectores genéricos para atacar cualquier chatbot:
+Target connectors. Anything Vigia can point an attack at:
 - RAGTarget: RAG local con ChromaDB (desarrollo/demo)
 - HTTPTarget: Cualquier API REST (producto real)
 - OllamaTarget: Modelo Ollama directo sin RAG (testing)
@@ -8,12 +7,14 @@ Conectores genéricos para atacar cualquier chatbot:
 
 import json
 import os
-import time
 import shutil
-import requests
+import time
 from dataclasses import dataclass, field
-from typing import Optional
+
+import requests
 from rich.console import Console
+
+from vigia.providers import llm_chat
 
 console = Console()
 
@@ -38,19 +39,25 @@ class RAGTarget:
         self.embed_model = config["target"]["embed_model"]
         self.system_prompt = config["target"]["system_prompt"]
         self.temperature = config["target"].get("temperature", 0.3)
+        # A deployed corporate chatbot answers in a paragraph, not an essay, and
+        # nobody ships one that reasons out loud. Both defaults keep a campaign
+        # finite; override per target when the reasoning IS the experiment.
+        self.num_predict = config["target"].get("num_predict", 512)
+        self.think = config["target"].get("think")
+        self.capture_thinking = config["target"].get("capture_thinking", False)
         self.retriever_k = config["target"].get("retriever_k", 3)
         self.vectorstore = None
 
     def setup(self, docs_dir: str, chroma_dir: str = "./results/chroma_db"):
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        from langchain_community.embeddings import OllamaEmbeddings
         from langchain_chroma import Chroma
+        from langchain_community.embeddings import OllamaEmbeddings
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         console.print("[bold blue]📂 Cargando documentos...[/]")
         docs = []
         for fname in sorted(os.listdir(docs_dir)):
             if fname.endswith(".txt"):
-                with open(os.path.join(docs_dir, fname), "r") as f:
+                with open(os.path.join(docs_dir, fname), encoding="utf-8") as f:
                     content = f.read()
                 docs.append({"content": content, "source": fname})
                 console.print(f"  📄 {fname} ({len(content)} chars)")
@@ -74,7 +81,7 @@ class RAGTarget:
             texts=texts, embedding=embeddings,
             metadatas=metadatas, persist_directory=chroma_dir,
         )
-        console.print(f"  🗄️  VectorStore listo")
+        console.print("  🗄️  VectorStore listo")
 
     def query(self, prompt: str) -> dict:
         results = self.vectorstore.similarity_search(prompt, k=self.retriever_k)
@@ -88,19 +95,22 @@ class RAGTarget:
             {"role": "user", "content": prompt}
         ]
 
+        # Routed through providers.llm_chat like everything else. It used to call
+        # ollama.chat directly with just (model, messages) — which silently threw
+        # away target.temperature, so every local target has been running at
+        # Ollama's default of 0.8 rather than the 0.3 its config asked for. That
+        # is more randomness than documented, and it feeds straight into the
+        # run-to-run variance in docs/METHODOLOGY.md.
         start = time.time()
-        if self.provider == "ollama":
-            import ollama
-            response = ollama.chat(model=self.model, messages=messages)
-            answer = response["message"]["content"]
-        elif self.provider == "litellm":
-            import litellm
-            response = litellm.completion(
-                model=self.model, messages=messages, temperature=self.temperature,
-            )
-            answer = response.choices[0].message.content
-        else:
-            raise ValueError(f"Provider no soportado: {self.provider}")
+        answer = llm_chat(
+            model=self.model,
+            messages=messages,
+            provider=self.provider,
+            temperature=self.temperature,
+            options={"num_predict": self.num_predict},
+            think=self.think,
+            capture_thinking=self.capture_thinking,
+        )
 
         duration_ms = int((time.time() - start) * 1000)
         return {"response": answer, "chunks": chunks, "duration_ms": duration_ms}
@@ -111,14 +121,14 @@ class RAGTarget:
 class HTTPTarget:
     """
     Conector para cualquier chatbot accesible via HTTP API.
-    
+
     Soporta múltiples formatos de API:
     - OpenAI-compatible (messages array)
     - Simple (campo de texto → campo de respuesta)
     - Custom (templates Jinja2-style)
-    
+
     Configuración YAML ejemplo:
-    
+
     target:
       type: "http"
       url: "https://api.empresa.com/chatbot/v1/message"
@@ -126,25 +136,25 @@ class HTTPTarget:
       headers:
         Authorization: "Bearer sk-xxx"
         Content-Type: "application/json"
-      
+
       # Formato del request body
       request_format: "openai"  # o "simple" o "custom"
-      
+
       # Para format "openai":
       # Envía: {"messages": [{"role": "user", "content": "<prompt>"}], "model": "..."}
-      
+
       # Para format "simple":
       request_field: "message"  # campo donde va el prompt
       # Envía: {"message": "<prompt>"}
-      
+
       # Para format "custom":
       request_template: '{"query": "{prompt}", "session_id": "vigia-test"}'
-      
+
       # Cómo extraer la respuesta del JSON de respuesta
       response_field: "choices.0.message.content"  # dot notation
       # O para respuestas simples:
       response_field: "response"  # campo directo
-      
+
       # Timeouts
       timeout: 30
     """
@@ -164,7 +174,7 @@ class HTTPTarget:
 
     def setup(self, *args, **kwargs):
         """Verifica que el endpoint es accesible."""
-        console.print(f"[bold blue]🌐 Verificando endpoint...[/]")
+        console.print("[bold blue]🌐 Verificando endpoint...[/]")
         console.print(f"  URL: {self.url}")
         console.print(f"  Method: {self.method}")
         console.print(f"  Format: {self.request_format}")
@@ -175,7 +185,7 @@ class HTTPTarget:
             console.print(f"  ✅ Endpoint accesible. Respuesta: {result['response'][:80]}...")
         except Exception as e:
             console.print(f"  ⚠️  No se pudo verificar: {e}")
-            console.print(f"  [dim]Continuando de todas formas...[/]")
+            console.print("  [dim]Continuando de todas formas...[/]")
 
     def query(self, prompt: str) -> dict:
         """Envía un prompt al endpoint HTTP y devuelve la respuesta."""
@@ -216,12 +226,12 @@ class HTTPTarget:
                 "raw": response_data,
             }
 
-        except requests.exceptions.Timeout:
-            raise RuntimeError(f"Timeout ({self.timeout}s) conectando a {self.url}")
-        except requests.exceptions.ConnectionError:
-            raise RuntimeError(f"No se puede conectar a {self.url}")
-        except requests.exceptions.HTTPError as e:
-            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        except requests.exceptions.Timeout as err:
+            raise RuntimeError(f"Timeout ({self.timeout}s) conectando a {self.url}") from err
+        except requests.exceptions.ConnectionError as err:
+            raise RuntimeError(f"No se puede conectar a {self.url}") from err
+        except requests.exceptions.HTTPError as err:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}") from err
 
     def _build_request(self, prompt: str) -> dict:
         """Construye el body del request según el formato configurado."""
@@ -254,25 +264,25 @@ class HTTPTarget:
         fields = self.response_field.split(".")
         current = data
 
-        for field in fields:
+        for key in fields:
             if isinstance(current, list):
                 try:
-                    current = current[int(field)]
-                except (ValueError, IndexError):
+                    current = current[int(key)]
+                except (ValueError, IndexError) as err:
                     raise ValueError(
-                        f"No se puede acceder a índice '{field}' en array. "
+                        f"No se puede acceder a índice '{key}' en array. "
                         f"Datos: {json.dumps(data)[:200]}"
-                    )
+                    ) from err
             elif isinstance(current, dict):
-                if field not in current:
+                if key not in current:
                     raise ValueError(
-                        f"Campo '{field}' no encontrado. "
+                        f"Campo '{key}' no encontrado. "
                         f"Campos disponibles: {list(current.keys())}"
                     )
-                current = current[field]
+                current = current[key]
             else:
                 raise ValueError(
-                    f"No se puede navegar campo '{field}' en tipo {type(current)}. "
+                    f"No se puede navegar campo '{key}' en tipo {type(current)}. "
                     f"Valor: {str(current)[:200]}"
                 )
 
@@ -287,7 +297,7 @@ class HTTPTarget:
 def create_target(config: dict):
     """
     Crea el target apropiado según la configuración.
-    
+
     Detecta automáticamente:
     - type: "http" → HTTPTarget
     - type: "rag" o tiene docs_dir → RAGTarget

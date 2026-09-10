@@ -12,6 +12,6 @@ El módulo puede generar informes desde:
   2. Datos en memoria (evaluaciones + remediación de la sesión actual)
 """
 
-from vigia.reporting.generator import ReportGenerator, CampaignData
+from vigia.reporting.generator import CampaignData, ReportGenerator
 
 __all__ = ["ReportGenerator", "CampaignData"]

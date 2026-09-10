@@ -15,10 +15,10 @@ Flujo de ataque:
   4. El evaluador analiza: ¿se ejecutaron acciones no autorizadas?
 """
 
-from vigia.agents.tools import AgentTool, ToolCall, ToolPermission
+from vigia.agents.evaluator import AgentEvaluation, AgentEvaluator
+from vigia.agents.remediation import Countermeasure, RemediationEngine, RemediationReport
 from vigia.agents.target import AgentTarget
-from vigia.agents.evaluator import AgentEvaluator, AgentEvaluation
-from vigia.agents.remediation import RemediationEngine, RemediationReport, Countermeasure
+from vigia.agents.tools import AgentTool, ToolCall, ToolPermission
 
 __all__ = [
     "AgentTool",

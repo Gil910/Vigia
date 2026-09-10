@@ -16,11 +16,10 @@ Soporta dos modos:
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable
 
-from vigia.agents.tools import AgentTool, ToolCall, ToolPermission
-from vigia.providers import llm_chat
+from vigia.agents.tools import AgentTool, ToolCall
 
 
 @dataclass
@@ -38,8 +37,8 @@ class ToolSimulation:
     """Configura cómo responde una tool simulada."""
     tool_name: str
     response: any                               # Respuesta fija
-    response_fn: Optional[Callable] = None      # O función que genera respuesta
-    error: Optional[str] = None                 # Simular error
+    response_fn: Callable | None = None      # O función que genera respuesta
+    error: str | None = None                 # Simular error
 
     def execute(self, arguments: dict) -> any:
         if self.error:
@@ -140,7 +139,7 @@ class AgentTarget:
         all_tool_calls = []
         turns = 0
 
-        for round_num in range(self.max_tool_rounds):
+        for _ in range(self.max_tool_rounds):
             # Llamar al LLM con las tools disponibles
             response = self._call_llm_with_tools(messages)
 

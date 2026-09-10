@@ -11,11 +11,10 @@ Usage:
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 import yaml
 
-from vigia.scanner import run_scan, ScanResult
+from vigia.scanner import ScanResult, run_scan
 
 
 @dataclass
@@ -32,7 +31,7 @@ class ModelScore:
     max_score: int = 0
     vuln_rate: float = 0.0
     vectors_breached: list[str] = field(default_factory=list)
-    scan_result: Optional[ScanResult] = None
+    scan_result: ScanResult | None = None
 
 
 @dataclass
@@ -44,13 +43,13 @@ class BenchmarkResult:
     duration_ms: int = 0
 
     @property
-    def most_resistant(self) -> Optional[ModelScore]:
+    def most_resistant(self) -> ModelScore | None:
         """Model with lowest vulnerability rate."""
         executed = [m for m in self.models if m.total_executed > 0]
         return min(executed, key=lambda m: m.vuln_rate) if executed else None
 
     @property
-    def least_resistant(self) -> Optional[ModelScore]:
+    def least_resistant(self) -> ModelScore | None:
         """Model with highest vulnerability rate."""
         executed = [m for m in self.models if m.total_executed > 0]
         return max(executed, key=lambda m: m.vuln_rate) if executed else None
@@ -203,7 +202,7 @@ def run_benchmark(
                 print(f"[vigia] SKIP {cp}: example/schema config", file=sys.stderr)
             continue
         try:
-            with open(cp, "r") as f:
+            with open(cp, encoding="utf-8") as f:
                 c = yaml.safe_load(f)
             if "target" not in c:
                 if not quiet:

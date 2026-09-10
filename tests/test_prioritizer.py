@@ -2,9 +2,11 @@
 
 import os
 import tempfile
+
 import pytest
+
+from vigia.database import create_campaign, init_db, record_learning
 from vigia.prioritizer import prioritize_seeds
-from vigia.database import init_db, create_campaign, record_learning
 
 
 @pytest.fixture

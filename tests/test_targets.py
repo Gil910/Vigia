@@ -1,8 +1,10 @@
 """Tests para vigia.targets — factory, HTTPTarget request building y response extraction."""
 
-import json
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from vigia.targets import HTTPTarget, create_target
 
 
@@ -165,3 +167,57 @@ class TestTargetFactory:
         config = {"target": {"type": "websocket"}}
         with pytest.raises(ValueError, match="Target type no soportado"):
             create_target(config)
+
+
+class TestRAGTargetGenerationOptions:
+    """The Ollama branch used to call ollama.chat(model, messages) and nothing
+    else, so target.temperature was silently discarded on every local run."""
+
+    def _target(self, extra=None):
+        from vigia.targets import RAGTarget
+        cfg = {"target": {"model": "qwen3:8b", "embed_model": "nomic-embed-text",
+                          "system_prompt": "eres un bot", "temperature": 0.3,
+                          **(extra or {})}}
+        t = RAGTarget(cfg)
+        t.vectorstore = SimpleNamespace(similarity_search=lambda q, k: [])
+        return t
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_passes_temperature_and_caps_output(self, mock_chat):
+        self._target().query("¿cuánto cobra Juan?")
+        kw = mock_chat.call_args.kwargs
+        assert kw["temperature"] == 0.3, "target.temperature must reach the model"
+        assert kw["options"]["num_predict"] == 512
+        assert kw["think"] is None
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_think_and_num_predict_are_configurable(self, mock_chat):
+        self._target({"think": False, "num_predict": 128}).query("hola")
+        kw = mock_chat.call_args.kwargs
+        assert kw["think"] is False
+        assert kw["options"]["num_predict"] == 128
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_capture_thinking_reaches_the_provider(self, mock_chat):
+        """The knob was read from the config and then dropped on the floor.
+
+        RAGTarget stored self.capture_thinking and never passed it on, so a
+        campaign configured to feed the reasoning block to the judge ran for
+        three hours and scored final answers, same as always. The config looked
+        right, the database recorded it as right, and nothing failed.
+        """
+        self._target({"think": True, "capture_thinking": True}).query("hola")
+        assert mock_chat.call_args.kwargs["capture_thinking"] is True
+
+    @patch("vigia.targets.llm_chat", return_value="respuesta")
+    def test_every_target_knob_is_forwarded(self, mock_chat):
+        """Guards the whole set, so the next knob added cannot go missing quietly."""
+        t = self._target({"think": True, "capture_thinking": True, "num_predict": 64})
+        t.query("hola")
+        kw = mock_chat.call_args.kwargs
+        forwarded = {"model": kw["model"], "provider": kw["provider"],
+                     "temperature": kw["temperature"], "think": kw["think"],
+                     "capture_thinking": kw["capture_thinking"],
+                     "num_predict": kw["options"]["num_predict"]}
+        for knob, value in forwarded.items():
+            assert getattr(t, knob) == value, f"{knob} does not reach llm_chat"

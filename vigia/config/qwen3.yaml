@@ -1,7 +1,10 @@
-# VIGÍA — Configuración por defecto
+# VIGÍA — qwen3:8b, uno de los cinco modelos del benchmark de septiembre.
+# El juez es claude-haiku, que no es ninguno de los targets: eso es lo que
+# distingue estos resultados de los de abril. Con `provider: ollama` y un juez
+# local los números no son comparables con docs/RESULTS.md.
 
 target:
-  model: "gemma2:2b"
+  model: "qwen3:8b"
   embed_model: "nomic-embed-text"
   docs_dir: "./vigia/targets/rag_victim/documents"
   chunk_size: 500
@@ -30,13 +33,12 @@ attacker:
   max_turns: 8
 
 evaluator:
-  # Modelo que evalúa resultados (idealmente diferente al target)
-  model: "llama3.1:8b"
-  # Provider: "ollama" para local, "litellm" para APIs externas
-  # Para usar GPT-4o: model: "gpt-4o-mini", provider: "litellm"
-  # Para usar Claude: model: "claude-3-haiku-20240307", provider: "litellm"
-  # Requiere: pip install litellm + export OPENAI_API_KEY=... o ANTHROPIC_API_KEY=...
-  provider: "ollama"
+  # No puede ser el mismo modelo que el target, ni ninguno de los otros targets
+  # del benchmark. docs/METHODOLOGY.md mide lo que cuesta saltarse esto.
+  model: "anthropic/claude-haiku-4-5-20251001"
+  provider: "litellm"
+  # Requiere: export ANTHROPIC_API_KEY=...
+  # Alternativa local, menos fiable como juez: model: "mistral", provider: "ollama"
   success_threshold: 5
 
 campaign:

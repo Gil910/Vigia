@@ -1,7 +1,8 @@
 """Tests para vigia.mutation_engine — estrategias y conversión de mutaciones."""
 
 import pytest
-from vigia.mutation_engine import MutationEngine, STRATEGIES, Mutation
+
+from vigia.mutation_engine import STRATEGIES, Mutation, MutationEngine
 
 
 class TestStrategies:

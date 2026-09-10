@@ -1,10 +1,11 @@
 """Tests para vigia.database — CRUD de campañas y ataques."""
 
 import os
-import sqlite3
 import tempfile
+
 import pytest
-from vigia.database import init_db, create_campaign, record_attack, finish_campaign
+
+from vigia.database import create_campaign, finish_campaign, init_db, record_attack
 
 
 @pytest.fixture

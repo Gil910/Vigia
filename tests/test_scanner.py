@@ -1,8 +1,10 @@
 """Tests para vigia.scanner — CI/CD gate mode."""
 
 import json
+
 import pytest
-from vigia.scanner import ScanResult, ScanFinding, _xml_escape
+
+from vigia.scanner import ScanFinding, ScanResult, _xml_escape
 
 
 class TestScanFinding:
@@ -171,3 +173,70 @@ class TestXmlEscape:
 
     def test_spanish_characters_preserved(self):
         assert _xml_escape("¿Cuánto gana José?") == "¿Cuánto gana José?"
+
+
+class TestCorpusSize:
+    """El banner dice cuántas semillas hay. Tiene que ser verdad."""
+
+    def test_it_counts_the_corpora_the_commands_fire(self, tmp_path):
+        """Contar todos los json del directorio sumaba seeds_mutated.json.
+
+        Ese fichero es la salida por defecto de `vigia mutate`, así que el
+        banner anunciaba un corpus casi el doble del que ataca. Ya no se
+        distribuye, y por eso el señuelo lo pone aquí el test: si dependiera de
+        que hubiera un json de sobra en el directorio, dejaría de distinguir el
+        fallo en cuanto alguien limpiase la carpeta.
+        """
+        import json
+        from pathlib import Path
+
+        from vigia.cli import CORPUS_FILES, _count_seeds
+
+        seeds = Path(__file__).resolve().parent.parent / "vigia" / "corpus" / "seeds"
+        expected = sum(len(json.loads((seeds / n).read_text(encoding="utf-8")))
+                       for n in CORPUS_FILES)
+        assert _count_seeds() == expected
+
+        decoy = seeds / "seeds_mutated.json"
+        assert not decoy.exists(), "el señuelo no puede existir ya"
+        decoy.write_text(json.dumps([{"id": f"X-{i}"} for i in range(7)]),
+                         encoding="utf-8")
+        try:
+            assert _count_seeds() == expected, (
+                f"un json de más en el directorio subió la cuenta a "
+                f"{_count_seeds()}; solo cuentan {CORPUS_FILES}")
+        finally:
+            decoy.unlink()
+
+    def test_no_locale_is_a_token_presence(self):
+        """Durante meses el corpus tenía 1 semilla catalana contra 39 de cada
+        otro idioma, y la comparación entre idiomas era en realidad una
+        comparación entre vectores.
+
+        Esto pedía igualdad exacta hasta que once semillas hubo que tirarlas:
+        ningún modelo las reescribía. Los alineados se niegan a traducir un
+        ataque que pide instrucciones de sistema, y los que no se niegan no
+        saben euskera. Un corpus con once semillas menos es honesto; uno con
+        once negativas dentro, no.
+
+        Así que el umbral es proporcional. Coge el desbalance real y deja fuera
+        el que motivó el test: 1 contra 39 es un 3%.
+        """
+        import collections
+        import json
+        from pathlib import Path
+
+        seeds = json.loads((Path(__file__).resolve().parent.parent / "vigia" / "corpus"
+                            / "seeds" / "seeds_validated.json").read_text(encoding="utf-8"))
+        by_locale = collections.Counter(s["language"] for s in seeds)
+        assert len(by_locale) == 6, by_locale
+        floor = 0.8 * max(by_locale.values())
+        thin = {loc: n for loc, n in by_locale.items() if n < floor}
+        assert not thin, (
+            f"{thin} frente a un máximo de {max(by_locale.values())}. Un locale "
+            f"tan corto no mide un idioma, mide esas semillas: o se regenera con "
+            f"scripts/fix_seeds.py o se saca de la comparación en stats.py")
+        vectors = {loc: {s["vector"] for s in seeds if s["language"] == loc}
+                   for loc in by_locale}
+        shared = set.intersection(*vectors.values())
+        assert len(shared) >= 17, f"solo {len(shared)} vectores en los seis locales"

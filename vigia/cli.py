@@ -1,23 +1,21 @@
-"""
-VIGÍA — CLI Entry Point v0.4
-"""
+"""Vigia CLI entry point."""
 
 import argparse
 import json
 import os
 import sys
 import time
+
 import yaml
-from rich.console import Console
-from rich.columns import Columns
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from vigia import __version__
+from vigia.paths import packaged
 
 console = Console()
-
-__version__ = "0.4.0"
 
 VIGIA_LOGO = r"""[bold red]
  ██╗   ██╗ ██╗  ██████╗  ██╗  █████╗
@@ -28,30 +26,93 @@ VIGIA_LOGO = r"""[bold red]
    ╚═══╝   ╚═╝  ╚═════╝  ╚═╝ ╚═╝  ╚═╝[/]"""
 
 
-def _check_ollama() -> str:
-    """Check if Ollama is reachable."""
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+
+def _ollama_models() -> list[str] | None:
+    """The models Ollama has, or None if it cannot be reached."""
     try:
         import urllib.request
-        req = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
-        data = json.loads(req.read())
-        models = [m["name"] for m in data.get("models", [])]
-        return f"[green]● online[/] ({len(models)} models)"
+        req = urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=2)
+        return [m["name"] for m in json.loads(req.read()).get("models", [])]
     except Exception:
-        return "[red]● offline[/]"
+        return None
+
+
+def _check_ollama() -> str:
+    """Check if Ollama is reachable."""
+    models = _ollama_models()
+    return "[red]● offline[/]" if models is None else (
+        f"[green]● online[/] ({len(models)} models)")
+
+
+def _ollama_models_needed(config: dict) -> list[str]:
+    """The Ollama models this config will actually ask for."""
+    wanted = []
+    for section in ("target", "evaluator", "attacker"):
+        block = config.get(section) or {}
+        if block.get("provider", "ollama") == "ollama" and block.get("model"):
+            wanted.append(block["model"])
+    embed = (config.get("target") or {}).get("embed_model")
+    if embed:
+        wanted.append(embed)
+    return sorted(set(wanted))
+
+
+def _require_ollama(config: dict) -> None:
+    """Stop with something readable if the run needs Ollama and it is not ready.
+
+    Two failures look identical from inside langchain and neither says what to
+    do: Ollama not running, and Ollama running without the model. Both used to
+    surface as forty lines of stack trace ending in "Connection refused" or a
+    404 halfway through a campaign.
+    """
+    wanted = _ollama_models_needed(config)
+    if not wanted:
+        return
+
+    have = _ollama_models()
+    if have is None:
+        console.print(Panel(
+            f"No hay ningún Ollama escuchando en [bold]{OLLAMA_HOST}[/].\n\n"
+            "Esta configuración usa modelos locales. Arráncalo con "
+            "[bold]ollama serve[/] y descarga lo que hace falta:\n\n"
+            + "\n".join(f"  [dim]ollama pull {m}[/]" for m in wanted) + "\n\n"
+            "Si el modelo está en otra máquina, exporta [bold]OLLAMA_HOST[/]. Para "
+            "usar un proveedor remoto, cambia [bold]provider[/] en el YAML.",
+            title="Ollama no disponible", border_style="red"))
+        sys.exit(2)
+
+    # Ollama reports "mistral:latest" for a model pulled as "mistral".
+    installed = {n.split(":")[0] for n in have} | set(have)
+    missing = [m for m in wanted if m not in installed and m.split(":")[0] not in installed]
+    if missing:
+        console.print(Panel(
+            "Ollama está levantado pero le faltan modelos que pide esta "
+            "configuración:\n\n"
+            + "\n".join(f"  [dim]ollama pull {m}[/]" for m in missing) + "\n\n"
+            "Sin esto la campaña arranca y se cae a mitad con un 404 por ataque.",
+            title="Faltan modelos", border_style="red"))
+        sys.exit(2)
+
+
+# The corpora the commands actually fire. Counting every json in the directory
+# instead double-counted seeds_mutated.json, which is the raw output of
+# `vigia mutate` and a subset of the validated set, so the banner claimed a corpus
+# nearly twice the size of the one it attacks with.
+CORPUS_FILES = ("seeds_validated.json", "agent_seeds.json")
 
 
 def _count_seeds() -> int:
-    """Count total seeds in corpus."""
+    """How many seeds the default corpora hold."""
     seeds_dir = os.path.join(os.path.dirname(__file__), "corpus", "seeds")
     total = 0
-    if os.path.isdir(seeds_dir):
-        for f in os.listdir(seeds_dir):
-            if f.endswith(".json"):
-                try:
-                    with open(os.path.join(seeds_dir, f)) as fh:
-                        total += len(json.load(fh))
-                except Exception:
-                    pass
+    for name in CORPUS_FILES:
+        try:
+            with open(os.path.join(seeds_dir, name), encoding="utf-8") as fh:
+                total += len(json.load(fh))
+        except Exception:
+            pass
     return total
 
 
@@ -112,13 +173,15 @@ def show_welcome():
 
     console.print(
         "\n  [dim]Run[/] [bold]vigia <command> --help[/] [dim]for details.[/]\n"
-        "  [dim]Docs:[/] [link=https://github.com/Gil910/vigia]github.com/Gil910/vigia[/]\n"
+        "  [dim]Docs:[/] [link=https://github.com/Gil910/Vigia]github.com/Gil910/Vigia[/]\n"
     )
 
 
 def cmd_run(args):
     """Ejecutar una campaña de ataques one-shot."""
     from vigia.runner import run_campaign
+    with open(args.config, encoding="utf-8") as f:
+        _require_ollama(yaml.safe_load(f) or {})
     run_campaign(args.config, args.corpus)
 
 
@@ -126,9 +189,9 @@ def cmd_mutate(args):
     """Generar mutaciones del corpus."""
     from vigia.mutation_engine import MutationEngine
 
-    with open(args.config, "r") as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, "r") as f:
+    with open(args.corpus, encoding="utf-8") as f:
         seeds = json.load(f)
 
     if args.strategies:
@@ -138,17 +201,18 @@ def cmd_mutate(args):
 
     max_per_seed = args.max or config.get("attacker", {}).get("mutations_per_seed", 5)
     model = config.get("attacker", {}).get("model", "llama3.1:8b")
+    provider = config.get("attacker", {}).get("provider", "ollama")
 
     console.print(Panel(
         f"[bold]VIGÍA Mutation Engine[/]\n"
         f"Corpus: {len(seeds)} semillas\n"
         f"Estrategias: {strategies or 'todas'}\n"
         f"Max por semilla: {max_per_seed}\n"
-        f"Modelo: {model}",
+        f"Modelo: {model} ({provider})",
         title="🧬 Mutación", border_style="cyan"
     ))
 
-    engine = MutationEngine(model=model)
+    engine = MutationEngine(model=model, provider=provider)
     all_mutated_seeds = []
 
     for i, seed in enumerate(seeds):
@@ -174,16 +238,16 @@ def cmd_mutate(args):
 
 def cmd_multiturn(args):
     """Ejecutar ataques multi-turno."""
-    from vigia.attacker import AttackerAgent, PERSISTENCE_STRATEGIES
-    from vigia.targets import create_target
+    from vigia.attacker import PERSISTENCE_STRATEGIES, AttackerAgent
+    from vigia.database import create_campaign, finish_campaign, init_db, record_attack
     from vigia.evaluator import evaluate_with_llm
-    from vigia.database import init_db, create_campaign, record_attack, finish_campaign
-    from vigia.hooks import HookRegistry, HookEvent, HookContext, make_learning_hook
+    from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
     from vigia.providers import token_stats
+    from vigia.targets import create_target
 
-    with open(args.config, "r") as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, "r") as f:
+    with open(args.corpus, encoding="utf-8") as f:
         seeds = json.load(f)
 
     strategy = args.strategy or "rapport_to_extraction"
@@ -207,12 +271,12 @@ def cmd_multiturn(args):
         f"Judge: {eval_model}\n"
         f"Strategy: {strategy} — {strat_info.get('name', '?')}\n"
         f"Seeds: {len(seeds)} | Max turns: {max_turns}",
-        title="🔴 VIGÍA v0.5 Multi-Turn", border_style="red"
+        title="VIGÍA Multi-Turn", border_style="red"
     ))
 
     # Setup target via factory (soporta RAG, HTTP, etc.)
     target = create_target(config)
-    docs_dir = config["target"].get("docs_dir")
+    docs_dir = packaged(config["target"].get("docs_dir"))
     if docs_dir and hasattr(target, 'vectorstore'):
         target.setup(docs_dir)
     else:
@@ -295,25 +359,10 @@ def cmd_multiturn(args):
                 console.print(f"    [dim]📊 {turn.analysis[:80]}[/]")
             console.print()
 
-        # Evaluar el resultado completo: concatenar toda la conversación
+        # Un leak puede aparecer en cualquier turno, no solo en el último:
+        # se puntúan todos y se guarda el peor caso.
         if mt_result.turns:
-            last_response = mt_result.turns[-1].response
-            full_conversation = "\n".join([
-                f"Atacante: {t.prompt}\nChatbot: {t.response}"
-                for t in mt_result.turns
-            ])
-
-            # Evaluar la última respuesta (donde más probable hay leak)
-            evaluation = evaluate_with_llm(
-                attack_prompt=mt_result.turns[-1].prompt,
-                target_response=last_response,
-                seed_info=seed,
-                model=eval_model,
-                provider=eval_provider,
-            )
-
-            # También evaluar si hubo leaks en turnos intermedios
-            best_eval = evaluation
+            best_eval, worst_turn = None, mt_result.turns[-1]
             for turn in mt_result.turns:
                 turn_eval = evaluate_with_llm(
                     attack_prompt=turn.prompt,
@@ -322,8 +371,8 @@ def cmd_multiturn(args):
                     model=eval_model,
                     provider=eval_provider,
                 )
-                if turn_eval.score > best_eval.score:
-                    best_eval = turn_eval
+                if best_eval is None or turn_eval.score > best_eval.score:
+                    best_eval, worst_turn = turn_eval, turn
 
             mt_result.final_score = best_eval.score
             mt_result.success = best_eval.success
@@ -362,15 +411,16 @@ def cmd_multiturn(args):
             )
 
             # Guardar en DB (el mejor turno)
-            record_attack(conn, campaign_id, {
+            record_attack(conn, campaign_id, threshold=success_threshold, result={
                 "seed_id": seed["id"],
                 "vector": seed.get("vector", "multiturn"),
                 "owasp": seed.get("owasp"),
                 "atlas": seed.get("atlas"),
                 "language": seed.get("language"),
-                "prompt": f"[MULTITURN {len(mt_result.turns)} turns] " + mt_result.turns[-1].prompt,
-                "response": last_response,
-                "chunks": mt_result.turns[-1].chunks if mt_result.turns else [],
+                "prompt": f"[MULTITURN {len(mt_result.turns)} turns, scored on turn "
+                          f"{worst_turn.turn}] " + worst_turn.prompt,
+                "response": worst_turn.response,
+                "chunks": worst_turn.chunks,
                 "score": best_eval.score,
                 "evaluator_reasoning": f"[{best_eval.category}] {best_eval.reasoning}",
                 "duration_ms": mt_result.total_duration_ms,
@@ -420,8 +470,8 @@ def cmd_multiturn(args):
 
 def cmd_strategies(args):
     """Listar estrategias disponibles."""
-    from vigia.mutation_engine import STRATEGIES
     from vigia.attacker import PERSISTENCE_STRATEGIES
+    from vigia.mutation_engine import STRATEGIES
 
     table1 = Table(title="Estrategias de Mutación")
     table1.add_column("Key", style="cyan")
@@ -447,6 +497,7 @@ def cmd_strategies(args):
 def cmd_agent(args):
     """Ejecutar campaña de ataques contra un agente con herramientas."""
     import tempfile
+
     from vigia.agents.runner import run_agent_campaign
 
     corpus_path = args.corpus
@@ -455,7 +506,7 @@ def cmd_agent(args):
         # Auto-generar seeds con el Planner antes de ejecutar
         from vigia.agents.planner import AttackPlanner
 
-        with open(args.config, "r") as f:
+        with open(args.config, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         agent_config = config.get("agent", {})
@@ -489,7 +540,7 @@ def cmd_plan(args):
     """Generar un plan de ataque personalizado para un agente."""
     from vigia.agents.planner import AttackPlanner
 
-    with open(args.config, "r") as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     agent_config = config.get("agent", {})
@@ -577,8 +628,9 @@ def cmd_plan(args):
 
 def cmd_report(args):
     """Generar informe exportable de una campaña."""
-    from vigia.reporting.generator import ReportGenerator
     import os
+
+    from vigia.reporting.generator import ReportGenerator
 
     gen = ReportGenerator()
 
@@ -689,10 +741,11 @@ def cmd_scan(args):
 
 def cmd_remediate(args):
     """Generar informe de remediación desde evaluaciones previas."""
-    from vigia.agents.remediation import RemediationEngine
     from rich.table import Table
 
-    with open(args.input, "r") as f:
+    from vigia.agents.remediation import RemediationEngine
+
+    with open(args.input, encoding="utf-8") as f:
         evaluations = json.load(f)
 
     engine = RemediationEngine()
@@ -736,27 +789,29 @@ def cmd_remediate(args):
 
 def main():
     parser = argparse.ArgumentParser(
+        prog="vigia",
         description="VIGÍA — Framework de Red Teaming para LLMs y Agentes AI",
     )
+    parser.add_argument("--version", action="version", version=f"vigia {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     # run
     run_p = subparsers.add_parser("run", help="Campaña one-shot contra chatbot")
-    run_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    run_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    run_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    run_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
 
     # mutate
     mut_p = subparsers.add_parser("mutate", help="Generar mutaciones lingüísticas")
-    mut_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    mut_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    mut_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    mut_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     mut_p.add_argument("-s", "--strategies", default=None)
     mut_p.add_argument("-m", "--max", type=int, default=None)
     mut_p.add_argument("-o", "--output", default=None)
 
     # multiturn
     mt_p = subparsers.add_parser("multiturn", help="Ataques multi-turno contra chatbot")
-    mt_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    mt_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    mt_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    mt_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     mt_p.add_argument("-s", "--strategy", default="rapport_to_extraction",
                       help="Estrategia de persistence")
     mt_p.add_argument("-t", "--turns", type=int, default=None, help="Máximo turnos")
@@ -768,14 +823,14 @@ def main():
 
     # agent
     agent_p = subparsers.add_parser("agent", help="Campaña de ataques contra agente AI con herramientas")
-    agent_p.add_argument("-c", "--config", default="vigia/config/agent_example.yaml")
-    agent_p.add_argument("--corpus", default="vigia/corpus/seeds/agent_seeds.json")
+    agent_p.add_argument("-c", "--config", default=packaged("vigia/config/agent_example.yaml"))
+    agent_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/agent_seeds.json"))
     agent_p.add_argument("--plan", action="store_true",
                          help="Auto-generar seeds con el Attack Planner antes de ejecutar")
 
     # plan (NUEVO)
     plan_p = subparsers.add_parser("plan", help="Generar plan de ataque personalizado para un agente")
-    plan_p.add_argument("-c", "--config", default="vigia/config/agent_example.yaml")
+    plan_p.add_argument("-c", "--config", default=packaged("vigia/config/agent_example.yaml"))
     plan_p.add_argument("-d", "--description", default=None,
                         help="Descripción del agente en lenguaje natural (opcional)")
     plan_p.add_argument("-o", "--output", default=None,
@@ -804,7 +859,7 @@ def main():
     bench_p = subparsers.add_parser("benchmark", help="Compare resistance across multiple models")
     bench_p.add_argument("-c", "--configs", nargs="+", action="extend", default=[],
                          help="Config YAML files to compare (one per model)")
-    bench_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    bench_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     bench_p.add_argument("--threshold", type=int, default=5,
                          help="Score threshold for vulnerability (default: 5)")
     bench_p.add_argument("-f", "--format", choices=["table", "markdown", "json"], default="table",
@@ -816,8 +871,8 @@ def main():
 
     # scan (CI/CD gate)
     scan_p = subparsers.add_parser("scan", help="CI/CD gate — scan and exit with status code")
-    scan_p.add_argument("-c", "--config", default="vigia/config/default.yaml")
-    scan_p.add_argument("--corpus", default="vigia/corpus/seeds/seeds_validated.json")
+    scan_p.add_argument("-c", "--config", default=packaged("vigia/config/default.yaml"))
+    scan_p.add_argument("--corpus", default=packaged("vigia/corpus/seeds/seeds_validated.json"))
     scan_p.add_argument("--fail-on-score", type=int, default=5,
                         help="Score threshold to fail the scan (default: 5)")
     scan_p.add_argument("-f", "--format", choices=["summary", "json", "junit"], default="summary",

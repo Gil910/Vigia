@@ -1,7 +1,9 @@
 """Tests para vigia.benchmark — cross-model comparison."""
 
 import json
+
 import pytest
+
 from vigia.benchmark import BenchmarkResult, ModelScore, _resistance_bar
 
 
@@ -99,7 +101,7 @@ class TestBenchmarkResult:
 
     def test_to_markdown_sorted_by_vuln_rate(self, benchmark_3_models):
         md = benchmark_3_models.to_markdown()
-        lines = [l for l in md.split("\n") if l.startswith("| ") and "Model" not in l and "---" not in l]
+        lines = [ln for ln in md.split("\n") if ln.startswith("| ") and "Model" not in ln and "---" not in ln]
         # claude-haiku (18.2%) should come before llama (54.5%)
         assert lines[0].startswith("| claude-haiku")
         assert lines[-1].startswith("| llama3.1:8b")
