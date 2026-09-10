@@ -1,10 +1,12 @@
-"""Tests for the v0.6.0 correctness fixes.
+"""Tests for the v0.6.0 and v0.6.1 correctness fixes.
 
 Each of these covers something that shipped broken and was found by reading the
-code rather than by a failing test, which is the reason they exist.
+code, or by running the commands the README tells a new user to run, rather than
+by a failing test — which is the reason they exist.
 """
 
 import json
+import os
 
 import pytest
 
@@ -460,3 +462,208 @@ class TestTheScriptsSurviveBeingPokedAt:
         assert done.returncode != 0
         assert "Traceback" not in done.stderr, done.stderr[-400:]
         assert "definitely/not/here" in done.stderr
+
+
+class TestTheDocumentedCommandsWorkAfterPipInstall:
+    """v0.6.0 wrapped `packaged()` around the argparse defaults and stopped
+    there, so `vigia run` worked from an empty directory and the very next line
+    of the README — `vigia run -c vigia/config/claude_haiku.yaml` — raised the
+    FileNotFoundError the helper exists to prevent. Resolution belongs where the
+    path is opened, not where the default is declared."""
+
+    def test_a_shipped_config_named_the_repo_way_resolves(self, tmp_path, monkeypatch):
+        from vigia.paths import resolve
+        monkeypatch.chdir(tmp_path)          # no repo here, as after pip install
+        found = resolve("vigia/config/claude_haiku.yaml", "config")
+        assert os.path.exists(found)
+
+    def test_a_users_own_relative_path_still_wins(self, tmp_path, monkeypatch):
+        from vigia.paths import resolve
+        monkeypatch.chdir(tmp_path)
+        mine = tmp_path / "mine.yaml"
+        mine.write_text("target: {}\n", encoding="utf-8")
+        assert resolve("mine.yaml", "config") == "mine.yaml"
+
+    def test_a_typo_is_a_sentence_not_a_traceback(self, tmp_path, monkeypatch):
+        from vigia.paths import resolve
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as excinfo:
+            resolve("vigia/config/does_not_exist.yaml", "config")
+        message = str(excinfo.value)
+        assert "does_not_exist.yaml" in message
+        assert "Shipped configs" in message, "the message should say what does exist"
+
+    def test_mutate_does_not_default_to_writing_inside_the_package(self):
+        # It used to default to vigia/corpus/seeds/seeds_mutated.json, which is
+        # inside site-packages after an install and absent anywhere else — so a
+        # finished mutation run died on its last line and lost everything.
+        import pathlib
+        source = pathlib.Path("vigia/cli.py").read_text(encoding="utf-8")
+        assert 'args.output or "vigia/corpus/seeds/' not in source
+        assert 'args.output or "seeds_mutated.json"' in source
+
+
+class TestTheOllamaPreflightAsksForTheRightModels:
+    """It reads `model` out of every block, and an HTTP target's `model` is a
+    label for the report — the config file says so in a comment. Demanding it
+    turned `vigia run -c mine.yaml`, the documented way to point Vigia at your
+    own chatbot, into `ollama pull chatbot-empresa-v1`."""
+
+    def test_an_http_targets_label_is_not_a_model_to_pull(self):
+        import yaml
+
+        from vigia.cli import _ollama_models_needed
+        cfg = yaml.safe_load(
+            open(packaged("vigia/config/http_example.yaml"), encoding="utf-8"))
+        needed = _ollama_models_needed(cfg)
+        assert cfg["target"]["model"] not in needed, needed
+
+    def test_a_url_with_no_type_is_still_an_http_target(self):
+        from vigia.cli import _ollama_models_needed
+        cfg = {"target": {"url": "https://api.example.com/chat", "model": "etiqueta"},
+               "evaluator": {"model": "mistral"}}
+        assert _ollama_models_needed(cfg) == ["mistral"]
+
+    def test_a_local_target_is_still_required(self):
+        from vigia.cli import _ollama_models_needed
+        cfg = {"target": {"type": "rag", "model": "llama3.1:8b",
+                          "embed_model": "nomic-embed-text"},
+               "evaluator": {"model": "mistral"}}
+        assert _ollama_models_needed(cfg) == ["llama3.1:8b", "mistral", "nomic-embed-text"]
+
+    @pytest.mark.parametrize("wanted,have,missing", [
+        # Ollama reports a model pulled as "mistral" under the tag "mistral:latest".
+        ("mistral", ["mistral:latest"], False),
+        ("mistral:latest", ["mistral:latest"], False),
+        # The relaxation must not run the other way: having the 8b does not
+        # satisfy a config asking for the 70b, and letting it through is the
+        # 404-per-attack this check exists to prevent.
+        ("llama3.1:70b", ["llama3.1:8b"], True),
+        ("mistral:7b-instruct-q4_0", ["mistral:latest"], True),
+    ])
+    def test_a_tag_that_is_not_installed_counts_as_missing(self, wanted, have, missing,
+                                                           monkeypatch, capsys):
+        import vigia.cli as cli
+        monkeypatch.setattr(cli, "_ollama_models", lambda: have)
+        cfg = {"target": {"type": "rag", "model": wanted}}
+        if missing:
+            with pytest.raises(SystemExit):
+                cli._require_ollama(cfg)
+            assert f"ollama pull {wanted}" in capsys.readouterr().out.replace("\n", "")
+        else:
+            cli._require_ollama(cfg)
+
+
+class TestAJudgeThatAnswersNonsenseIsNotAHealthyJudge:
+    """The release fixed a CI gate going green because the judge was down. A
+    judge that is up and never returns JSON took the same route: every verdict
+    scored -1, no exception was raised, and `vigia scan` reported PASSED on a
+    target that leaked every time."""
+
+    def _judge_says(self, text):
+        from unittest.mock import patch
+
+        import vigia.evaluator as ev
+        ev.reset_judge_health()
+        ev._eval_cache.clear()
+        return patch.object(ev, "llm_chat", return_value=text)
+
+    def test_five_unparseable_replies_abort_the_campaign(self):
+        import vigia.evaluator as ev
+        with self._judge_says("Claro, aquí tienes: el modelo no ha filtrado nada."):
+            with pytest.raises(JudgeUnavailable):
+                for _ in range(ev.CONSECUTIVE_FALLBACK_LIMIT):
+                    ev.evaluate_with_llm("p", "el salario es 52.000 EUR", {},
+                                         model="m", provider="ollama")
+
+    def test_a_parse_error_is_never_cached(self):
+        import vigia.evaluator as ev
+        with self._judge_says("no es json") as mock:
+            ev.evaluate_with_llm("p", "r", {}, model="m", provider="ollama")
+            ev.evaluate_with_llm("p", "r", {}, model="m", provider="ollama")
+            assert mock.call_count == 2, (
+                "a judge glitch was cached, so it would be replayed forever")
+
+    def test_a_real_verdict_still_resets_the_counter(self):
+        import vigia.evaluator as ev
+        with self._judge_says('{"score": 0, "category": "refusal", "reasoning": "ok"}'):
+            for _ in range(ev.CONSECUTIVE_FALLBACK_LIMIT + 3):
+                out = ev.evaluate_with_llm("p", "r", {}, model="m", provider="ollama")
+            assert out.score == 0
+            assert ev._judge_health["consecutive_failures"] == 0
+
+
+class TestACredentialWithNoTellingKeyName:
+    """`redact()` masked by key name only, so `Authorization` was caught and a
+    Gemini `?key=` in the target URL was stored verbatim in campaigns.config —
+    the exact leak this module's own docstring is about."""
+
+    def test_a_key_in_the_target_url_does_not_reach_the_database(self, tmp_path):
+        conn = init_db(str(tmp_path / "t.db"))
+        create_campaign(conn, "c", "target", {"target": {
+            "url": "https://generativelanguage.googleapis.com/v1/x?key=AIzaSyD-1234567890abcdefg",
+        }})
+        stored = conn.execute("SELECT config FROM campaigns").fetchone()["config"]
+        conn.close()
+        assert "AIzaSyD-1234567890abcdefg" not in stored
+        assert "generativelanguage.googleapis.com" in stored, (
+            "the reader still has to be able to tell what was attacked")
+
+    def test_a_token_baked_into_a_request_template_is_masked(self):
+        cfg = {"target": {"request_template":
+                          '{"q": "{prompt}", "access_token": "ghp_abcdefghijklmnop"}'}}
+        assert "ghp_abcdefghijklmnop" not in json.dumps(redact(cfg))
+
+    def test_the_config_is_not_truncated_on_its_way_in(self):
+        # scrub() cuts free text at 300 chars for logs. A config has to survive
+        # whole or the campaign it describes cannot be reproduced.
+        long_prompt = "x" * 800
+        out = redact({"attacker": {"system_prompt": long_prompt}})
+        assert out["attacker"]["system_prompt"] == long_prompt
+
+    @pytest.mark.parametrize("path,expected", [
+        ("/Users/someone/vigia/results/x.db", "~/vigia/results/x.db"),
+        ("/home/someone/vigia/results/x.db", "~/vigia/results/x.db"),
+        ("results/vigia.db", "results/vigia.db"),
+    ])
+    def test_a_home_directory_does_not_travel_with_the_config(self, path, expected):
+        # `database.path` goes into campaigns.config, and the .db is the file
+        # people attach to a report. Not a credential; still someone's name.
+        assert redact({"database": {"path": path}})["database"]["path"] == expected
+
+    @pytest.mark.parametrize("innocent", [
+        "Timeout evaluating seed ES-V04-001-EUS-001-eues after 30s",
+        "language es-ES not supported by this judge",
+        "ConnectionError: no-route-to-host",
+    ])
+    def test_it_does_not_eat_the_error_message(self, innocent):
+        # The old shape was any two letters plus a hyphen, which redacted every
+        # seed id and locale tag out of the logs a user needs to debug with.
+        assert scrub(innocent) == innocent
+
+
+class TestTheMachineReadableOutputsAgreeWithTheExitCode:
+    def _errored(self):
+        return ScanResult(target_model="m", total_seeds=5, total_executed=5,
+                          total_errors=5, findings=[])
+
+    def test_json_says_errored_when_the_exit_code_is_two(self):
+        result = self._errored()
+        assert result.exit_code == 2
+        assert json.loads(result.to_json())["vigia_scan"]["status"] == "errored"
+
+    def test_a_hostile_model_name_does_not_break_the_junit_report(self):
+        import xml.etree.ElementTree as ET
+        result = ScanResult(target_model='bot "v1" & <prod>', total_seeds=1,
+                            total_executed=1, total_errors=0, findings=[])
+        ET.fromstring(result.to_junit())   # raises if the XML is malformed
+
+    def test_control_characters_in_judge_reasoning_do_not_break_it(self):
+        import xml.etree.ElementTree as ET
+        # Raw model output. XML 1.0 has no escape for these, so they must go.
+        finding = ScanFinding(seed_id="S-1", vector="V01", owasp="LLM02", score=9,
+                              category="leak", reasoning="filtró\x08 el salario\x00",
+                              prompt="p", language="es-ES")
+        result = ScanResult(target_model="m", total_seeds=1, total_executed=1,
+                            total_errors=0, findings=[finding])
+        ET.fromstring(result.to_junit())

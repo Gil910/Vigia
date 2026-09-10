@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vigia import __version__
-from vigia.paths import packaged
+from vigia.paths import packaged, resolve
 
 console = Console()
 
@@ -47,19 +47,29 @@ def _check_ollama() -> str:
 
 
 def _ollama_models_needed(config: dict) -> list[str]:
-    """The Ollama models this config will actually ask for."""
+    """The Ollama models this config will actually ask for.
+
+    An HTTP target's `model` is a label for the report, not something to pull —
+    `create_target` never sends it to Ollama. Demanding it turned the documented
+    "point it at your own chatbot" flow into `ollama pull chatbot-empresa-v1`.
+    """
     wanted = []
-    for section in ("target", "evaluator", "attacker"):
+    target = config.get("target") or {}
+    target_type = target.get("type", "auto")
+    target_is_http = target_type == "http" or (target_type == "auto" and "url" in target)
+
+    for section in ("target", "evaluator", "attacker", "agent", "mutator"):
+        if section == "target" and target_is_http:
+            continue
         block = config.get(section) or {}
         if block.get("provider", "ollama") == "ollama" and block.get("model"):
             wanted.append(block["model"])
-    embed = (config.get("target") or {}).get("embed_model")
-    if embed:
-        wanted.append(embed)
+    if not target_is_http and target.get("embed_model"):
+        wanted.append(target["embed_model"])
     return sorted(set(wanted))
 
 
-def _require_ollama(config: dict) -> None:
+def _require_ollama(config: dict, to_stderr: bool = False) -> None:
     """Stop with something readable if the run needs Ollama and it is not ready.
 
     Two failures look identical from inside langchain and neither says what to
@@ -70,6 +80,10 @@ def _require_ollama(config: dict) -> None:
     wanted = _ollama_models_needed(config)
     if not wanted:
         return
+
+    # `vigia scan` may be writing JSON or JUnit to stdout; a Rich panel in the
+    # middle of it would make the artefact unparseable.
+    console = Console(stderr=True) if to_stderr else globals()["console"]
 
     have = _ollama_models()
     if have is None:
@@ -83,9 +97,14 @@ def _require_ollama(config: dict) -> None:
             title="Ollama no disponible", border_style="red"))
         sys.exit(2)
 
-    # Ollama reports "mistral:latest" for a model pulled as "mistral".
-    installed = {n.split(":")[0] for n in have} | set(have)
-    missing = [m for m in wanted if m not in installed and m.split(":")[0] not in installed]
+    # Ollama reports "mistral:latest" for a model pulled as "mistral", so a
+    # wanted name with no tag may match any tag. The reverse must not hold:
+    # wanting llama3.1:70b is not satisfied by having llama3.1:8b, and letting
+    # it pass is the 404-per-attack this check exists to prevent.
+    have_set = set(have)
+    untagged = {n.split(":")[0] for n in have}
+    missing = [m for m in wanted
+               if m not in have_set and (":" in m or m not in untagged)]
     if missing:
         console.print(Panel(
             "Ollama está levantado pero le faltan modelos que pide esta "
@@ -180,19 +199,22 @@ def show_welcome():
 def cmd_run(args):
     """Ejecutar una campaña de ataques one-shot."""
     from vigia.runner import run_campaign
-    with open(args.config, encoding="utf-8") as f:
+    config_path = resolve(args.config, "config")
+    with open(config_path, encoding="utf-8") as f:
         _require_ollama(yaml.safe_load(f) or {})
-    run_campaign(args.config, args.corpus)
+    run_campaign(config_path, args.corpus)
 
 
 def cmd_mutate(args):
     """Generar mutaciones del corpus."""
     from vigia.mutation_engine import MutationEngine
 
-    with open(args.config, encoding="utf-8") as f:
+    with open(resolve(args.config, "config"), encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, encoding="utf-8") as f:
+    with open(resolve(args.corpus, "corpus"), encoding="utf-8") as f:
         seeds = json.load(f)
+
+    _require_ollama(config)
 
     if args.strategies:
         strategies = [s.strip() for s in args.strategies.split(",")]
@@ -225,7 +247,10 @@ def cmd_mutate(args):
         all_mutated_seeds.extend(mutated_seeds)
 
     combined = seeds + all_mutated_seeds
-    output_path = args.output or "vigia/corpus/seeds/seeds_mutated.json"
+    # Not vigia/corpus/seeds/: after `pip install` that directory is inside
+    # site-packages, and from anywhere else it does not exist at all — which used
+    # to throw away a whole mutation run on its last line.
+    output_path = args.output or "seeds_mutated.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(combined, f, ensure_ascii=False, indent=2)
 
@@ -245,10 +270,12 @@ def cmd_multiturn(args):
     from vigia.providers import token_stats
     from vigia.targets import create_target
 
-    with open(args.config, encoding="utf-8") as f:
+    with open(resolve(args.config, "config"), encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    with open(args.corpus, encoding="utf-8") as f:
+    with open(resolve(args.corpus, "corpus"), encoding="utf-8") as f:
         seeds = json.load(f)
+
+    _require_ollama(config)
 
     strategy = args.strategy or "rapport_to_extraction"
     max_turns = args.turns or config.get("attacker", {}).get("max_turns", 7)
@@ -500,13 +527,17 @@ def cmd_agent(args):
 
     from vigia.agents.runner import run_agent_campaign
 
+    config_path = resolve(args.config, "config")
+    with open(config_path, encoding="utf-8") as f:
+        _require_ollama(yaml.safe_load(f) or {})
+
     corpus_path = args.corpus
 
     if args.plan:
         # Auto-generar seeds con el Planner antes de ejecutar
         from vigia.agents.planner import AttackPlanner
 
-        with open(args.config, encoding="utf-8") as f:
+        with open(resolve(args.config, "config"), encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         agent_config = config.get("agent", {})
@@ -533,14 +564,14 @@ def cmd_agent(args):
         corpus_path = tmp.name
         console.print(f"[dim]Seeds guardadas en: {corpus_path}[/]\n")
 
-    run_agent_campaign(args.config, corpus_path)
+    run_agent_campaign(config_path, corpus_path)
 
 
 def cmd_plan(args):
     """Generar un plan de ataque personalizado para un agente."""
     from vigia.agents.planner import AttackPlanner
 
-    with open(args.config, encoding="utf-8") as f:
+    with open(resolve(args.config, "config"), encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     agent_config = config.get("agent", {})
@@ -634,6 +665,11 @@ def cmd_report(args):
 
     gen = ReportGenerator()
 
+    if not os.path.exists(args.db):
+        raise SystemExit(
+            f"{args.db}: no such database. Point --db at the file a campaign "
+            f"wrote; `vigia run` prints the path when it finishes.")
+
     # Cargar datos desde DB
     data = gen.from_database(args.db, args.campaign_id)
 
@@ -709,10 +745,17 @@ def cmd_benchmark(args):
 
 def cmd_scan(args):
     """CI/CD gate: run scan and exit with code 0 (pass) or 1 (vulnerabilities found)."""
+    from vigia.paths import resolve
     from vigia.scanner import run_scan
 
+    # A CI gate that dies in forty lines of langchain traceback is worse than
+    # one that says the judge is not there. exit 2 already means ERRORED.
+    config_path = resolve(args.config, "config")
+    with open(config_path, encoding="utf-8") as f:
+        _require_ollama(yaml.safe_load(f) or {}, to_stderr=True)
+
     result = run_scan(
-        config_path=args.config,
+        config_path=config_path,
         corpus_path=args.corpus,
         fail_on_score=args.fail_on_score,
         quiet=args.quiet,

@@ -13,9 +13,14 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import JudgeUnavailable, evaluate_with_llm, warn_if_self_judging
+from vigia.evaluator import (
+    JudgeUnavailable,
+    evaluate_with_llm,
+    reset_judge_health,
+    warn_if_self_judging,
+)
 from vigia.hooks import HookContext, HookEvent, HookRegistry, make_learning_hook
-from vigia.paths import packaged
+from vigia.paths import packaged, resolve
 from vigia.prioritizer import prioritize_seeds
 from vigia.providers import token_stats
 from vigia.redaction import scrub
@@ -26,6 +31,13 @@ console = Console()
 
 def run_campaign(config_path: str, corpus_path: str):
     """Ejecuta una campaña completa contra cualquier target."""
+
+    # Resolved here rather than at the argparse default, so that a path the user
+    # typed gets the same treatment as one we shipped.
+    config_path = resolve(config_path, "config")
+    corpus_path = resolve(corpus_path, "corpus")
+
+    reset_judge_health()
 
     with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
