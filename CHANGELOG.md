@@ -109,7 +109,34 @@ April one, rather than re-reading the prose.
   `scripts/remap_owasp_2026.py --help` — which rewrites the corpus in place — was
   already inside `shutil.copy` before it checked its argument.
 
-537 tests, ruff clean.
+### And the reason there was a fourth list
+
+Four reviews in a row each found something the last one had not, which is not a
+story about carelessness. "Review the project" is not a repeatable procedure: each
+pass looked wherever whoever was doing it thought to look. The prose pass never
+installed the wheel. The packaging pass never re-derived a percentage. The release
+that fixed `vigia run` shipped with `vigia run -c <a config>` broken, because
+nobody had typed the second line of the README on a clean machine.
+
+`scripts/preflight.py` is the list instead of the intention. Twenty-three checks,
+each one a bug this repository actually had: the version agrees with itself, every
+published percentage traces to a generated table, the two READMEs quote the same
+numbers, the OWASP column matches the corpus, every link and path and command in
+the documentation resolves, no exfiltration destination is a domain somebody could
+register, and — the one that would have caught this release — a wheel installed
+into an empty virtualenv survives every command the documentation gives, with no
+traceback.
+
+It runs in CI on every push and with `--full` before a release, where it also
+builds, runs twine, and does the clean install. `tests/test_preflight.py` hands
+each check a copy of the repository with exactly the defect it claims to catch, so
+a check that has quietly stopped checking anything fails the suite.
+
+What it does not cover is worth naming, because the point is knowing where the
+edge is: whether the Basque is Basque, whether a verdict is right, whether the
+bootstrap intervals were computed correctly. Those need a person.
+
+561 tests, ruff clean, `python scripts/preflight.py --full` clean.
 
 ## 0.6.0 — 2026-09-08
 

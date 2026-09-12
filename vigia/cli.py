@@ -830,7 +830,14 @@ def cmd_remediate(args):
         console.print(f"\n[bold green]✅ Informe guardado en {args.output}[/]")
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """The parser, on its own, so something other than a user can read it.
+
+    `scripts/preflight.py` walks it to check that every command and flag the
+    documentation tells people to type actually exists. A README that names a
+    flag the CLI dropped is the same class of error as a README that quotes a
+    number the database does not have.
+    """
     parser = argparse.ArgumentParser(
         prog="vigia",
         description="VIGÍA — Framework de Red Teaming para LLMs y Agentes AI",
@@ -928,6 +935,11 @@ def main():
     # strategies
     subparsers.add_parser("strategies", help="Listar estrategias")
 
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     commands = {

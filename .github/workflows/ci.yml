@@ -35,3 +35,19 @@ jobs:
           python-version: "3.12"
       - name: Validate seed schema and taxonomy IDs
         run: python scripts/validate_corpus.py
+
+  preflight:
+    # Everything the repository claims about itself that a machine can check:
+    # the numbers trace to the database, the links resolve, the commands in the
+    # documentation exist, no exfiltration destination is a domain somebody could
+    # register. `--full` — build, twine, clean install — runs before a release,
+    # not on every push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python scripts/preflight.py
