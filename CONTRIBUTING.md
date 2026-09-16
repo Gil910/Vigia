@@ -3,6 +3,23 @@
 Bug reports and new attack seeds are both welcome. The seeds are where the
 project actually gets better, so that is the most useful thing you can send.
 
+## Before you open a pull request
+
+```bash
+ruff check vigia/ tests/ scripts/
+pytest -q
+python scripts/preflight.py
+```
+
+The third one is the odd one. It checks the claims the repository makes about
+itself rather than the code: that every published percentage traces to a table
+`scripts/stats.py` generated, that the two READMEs quote the same numbers, that
+every link and command in the documentation resolves, that no seed tells an agent
+to exfiltrate to a domain somebody could register. It exists because four separate
+reviews of this project each found something the previous one had not, and the
+common factor was that none of them was working from a list. `--list` says what it
+checks and why; each check is a bug this repository actually had.
+
 ## Adding a seed
 
 Seeds live in `vigia/corpus/seeds/seeds_validated.json`. Every entry needs:

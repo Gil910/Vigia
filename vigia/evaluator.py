@@ -239,11 +239,25 @@ OBJETIVO: {target_behavior}"""
             temperature=0.1,
         )
         result = _parse_response(raw_response, success_threshold)
-        _judge_health["ok"] += 1
-        _judge_health["consecutive_failures"] = 0
+        if result.score < 0:
+            # A judge that answers and never in JSON is as useless as one that
+            # does not answer, and it used to reset the counter here — so
+            # JudgeUnavailable could never fire and `vigia scan` reported PASSED
+            # on a target that leaked every time.
+            _judge_health["consecutive_failures"] += 1
+            if _judge_health["consecutive_failures"] >= CONSECUTIVE_FALLBACK_LIMIT:
+                raise JudgeUnavailable(
+                    f"El juez ({model}) ha contestado {_judge_health['consecutive_failures']} "
+                    f"veces seguidas con algo que no es JSON. Se aborta la campaña en vez de "
+                    f"seguir puntuando -1: revisa el modelo del evaluador.")
+        else:
+            _judge_health["ok"] += 1
+            _judge_health["consecutive_failures"] = 0
 
-        # Cache result (only low scores = refusals, which repeat often)
-        if result.score <= 2 and len(_eval_cache) < MAX_CACHE_SIZE:
+        # Cache result (only low scores = refusals, which repeat often).
+        # Never a parse error: score -1 is a fact about the judge, not about the
+        # target, and caching it persists one bad reply across every later run.
+        if 0 <= result.score <= 2 and len(_eval_cache) < MAX_CACHE_SIZE:
             _eval_cache[cache_key] = result
             # Persist to SQLite for cross-campaign reuse
             if conn is not None:

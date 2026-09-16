@@ -56,8 +56,14 @@ def _build_simulations(config: dict) -> dict:
     return sims  # Dict de tool_name → response
 
 
+from vigia.paths import resolve  # noqa: E402
+
+
 def run_agent_campaign(config_path: str, corpus_path: str):
     """Ejecuta una campaña de ataques contra un agente."""
+
+    config_path = resolve(config_path, "config")
+    corpus_path = resolve(corpus_path, "corpus")
 
     with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)

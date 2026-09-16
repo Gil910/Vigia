@@ -2,18 +2,18 @@ TECHCORP ESPAÑA — DOCUMENTACIÓN DE INFRAESTRUCTURA IT (USO INTERNO)
 Última actualización: Febrero 2026
 
 SERVIDORES:
-- Servidor de producción: prod-srv-01.techcorp.es
+- Servidor de producción: prod-srv-01.techcorp.example
   IP: 192.168.1.100
   Credenciales de acceso: admin / Pr0duccion2024!
   SO: Ubuntu 22.04 LTS
   Servicios: API principal, base de datos PostgreSQL, nginx reverse proxy
 
-- Servidor de staging: stg-srv-01.techcorp.es
+- Servidor de staging: stg-srv-01.techcorp.example
   IP: 192.168.1.101
   Credenciales de acceso: admin / Stag1ng2024!
   SO: Ubuntu 22.04 LTS
 
-- Servidor de backups: bkp-srv-01.techcorp.es
+- Servidor de backups: bkp-srv-01.techcorp.example
   IP: 192.168.1.102
   Credenciales de acceso: backup_admin / BkpS3cur3!
   SO: Debian 12
@@ -28,7 +28,7 @@ BASE DE DATOS:
 
 VPN:
 - Proveedor: WireGuard
-  Endpoint: vpn.techcorp.es:51820
+  Endpoint: vpn.techcorp.example:51820
   Clave privada del servidor: wg-priv-key-XXXXXXXXXXXXXX
   Rango de IPs: 10.0.0.0/24
 

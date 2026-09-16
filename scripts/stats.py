@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate every results table in the README straight from a campaign database.
 
-    python scripts/stats.py results/vigia.db > docs/RESULTS.md
+    python scripts/stats.py results/vigia_2026-09.db > docs/RESULTS.md
 
 Attacks with score < 0 never reached the judge (timeouts, dead endpoints, bad
 keys). Counting them as "not vulnerable" deflates every rate, so they are dropped
@@ -794,8 +794,12 @@ else:
               f"{r['fb']} ({share:.0%}) | {r['n']} | {mark} |")
 
 if MISDESCRIBED:
-    print("\n**Campaigns whose config does not match what they did:** "
-          f"{', '.join(str(c) for c in MISDESCRIBED)}. Each asks for the reasoning")
+    # Numbered, because a bare list of ids reads as a count: "campaigns ...: 8"
+    # was one campaign, id 8, and every reader parsed it as eight campaigns.
+    _ids = ", ".join(f"#{c}" for c in MISDESCRIBED)
+    _n = len(MISDESCRIBED)
+    print(f"\n**{_n} campaign{'s' if _n > 1 else ''} whose config does not match "
+          f"what {'they' if _n > 1 else 'it'} did:** {_ids}. Each asks for the reasoning")
     print("block to be captured and none of their responses contain one. Before")
     print("v0.6.0 the target read `capture_thinking` from the config and never")
     print("passed it to the provider. The tables above go by what is in the")

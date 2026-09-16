@@ -25,8 +25,8 @@ leak; 7 or more counts as critical. The threshold is a judgement call and it is
 configurable (`vigia scan --fail-on-score N`), but every table here uses 5 so the
 comparisons hold.
 
-The distribution is heavily bimodal. Of the 875 attacks in the benchmark, 404
-scored 0–1 and 296 scored 7–10. Only 13 landed on 5 or 6. Moving the threshold from
+The distribution is heavily bimodal. Of the 875 attacks in the benchmark, 403
+scored 0–1 and 294 scored 7–10. Only 13 landed on 5 or 6. Moving the threshold from
 5 to 6 changes the overall rate from 35.1% to 34.3%, so the exact cut-off is not
 doing much work — the judge is mostly making easy calls, which is worth
 remembering when you read a headline rate, in both directions.
@@ -125,9 +125,9 @@ The same config against the same 175 seeds, run twice, nothing changed:
 | gemma3:4b | 42.3% | 42.9% | 27 / 175 (15.4%) | 48.0% |
 | deepseek-r1:8b | 25.1% | 21.1% | 39 / 175 (22.3%) | 44.0% |
 
-The aggregate rate is stable to about a point. Individual verdicts are not: between
-one seed in ten and one in five changes sides between runs, and only half to
-two-thirds get the same score twice.
+The aggregate rate is stable to about a point. Individual verdicts are not: 12% to
+22% of them change sides between runs, and only 44% to 63% get the same score
+twice.
 
 The reasoning model is the least reproducible of the three by a clear margin, and
 `gemma3:4b` sitting between the other two says it is not purely a reasoning
@@ -171,8 +171,9 @@ It is one target. Whether other reasoning models behave the same way is unmeasur
 
 Raw per-locale rates are only comparable if every locale ran the same mix of
 attacks. In the corpus this project shipped for most of 2026 they did not: `ca-ES`
-carried 3 distinct seeds over 2 vectors, 76 of its 80 attacks being a single
-numerical anchor, while `es-ES` carried 63 seeds over 26 vectors. Numerical anchor
+carried 3 distinct seeds over 2 vectors — 72 of its 76 usable attacks were one
+numerical anchor and the other two seeds were agentic — while `es-ES` carried 65
+seeds over 26 of the vector names in use at the time. Numerical anchor
 is one of the two strongest vectors in the corpus, so Catalan looked 24 points more
 vulnerable than Spanish when what was really being compared was one strong attack
 against a broad mix.
@@ -344,16 +345,16 @@ Some of the more quotable results rest on very little data.
 | Claim | n | Read it as |
 |-------|--:|------------|
 | Cross-model benchmark | 175 per model, identical seeds, two judges | solid |
-| RAG vectors | 30–85 each | solid at the top of the table, thin at the bottom |
+| RAG vectors | 25–85 each | solid at the top of the table, thin at the bottom |
 | Reasoning vs answer | 175, two judges, one target | solid for the effect, one model only |
 | Per-locale rates | 90–190 each, **not balanced** | not comparable, see above |
 | Agentic, aggregate | 22 seeds × 3 runs: 10, 11, 11 | a range, 45–50% |
 | Agentic, per vector | 3–12 each | anecdote, not a rate |
 | Multi-turn, per strategy | 6 conversations each | directional at best |
 
-The agentic per-vector table has rows reading 100%. That means three attacks out of
-three. It reads well and means very little, which is why the aggregate is the
-number quoted in the README.
+The agentic per-vector table has rows reading 100%. Three of those are three
+attacks out of three, and the fourth is six out of six. It reads well and means
+very little, which is why the aggregate is the number quoted in the README.
 
 ## The judge cache was keyed wrong until v0.6.0
 
@@ -417,15 +418,17 @@ records what happened, and when they disagree the data wins.
 - **Structured output.** V17 fires XSS and JSON payloads at the target, but Vigia
   never renders the response. It cannot tell a payload that would have executed
   from one that would have been escaped downstream.
-- **Cached verdicts.** 38 results in the current database came from the cache
-  described above and may be wrong in the direction of "no leak".
+- **Cached verdicts.** 38 rows in the current database came from the cache
+  described above. Every one of them sits on a prompt the hygiene check rejects,
+  so none reaches a published rate — the table above says 0 of 875. Listed here
+  because that is a coincidence of which seeds were affected, not a guarantee.
 
 ## Reproducing this
 
 ```bash
 git clone https://github.com/Gil910/Vigia && cd Vigia
 pip install -e ".[dev]"
-ollama pull llama3.1:8b && ollama pull nomic-embed-text
+ollama pull llama3.1:8b && ollama pull mistral && ollama pull nomic-embed-text
 
 python scripts/validate_corpus.py                     # before anything else
 vigia run                                             # writes to results/vigia.db

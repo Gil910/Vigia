@@ -308,7 +308,10 @@ class TestConfigVersusData:
         out = run(path)
         assert "nothing to compare head to head" in out, (
             "una capturó razonamiento y la otra no: no son el mismo experimento")
-        assert "Campaigns whose config does not match what they did:** 1" in out
+        # The id is prefixed and the count is spelled out: the old line read
+        # "Campaigns whose config does not match what they did: 1", where the 1
+        # was campaign id 1 and every reader took it for a count of campaigns.
+        assert "1 campaign whose config does not match what it did:** #1" in out
 
     def test_a_rejudge_arm_is_not_flagged_as_misdescribed(self, tmp_path):
         """Un brazo answer-only guarda la respuesta sin razonamiento, y es correcto."""

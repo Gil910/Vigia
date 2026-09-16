@@ -6,6 +6,7 @@ Designed for pipeline integration: vigia scan --fail-on-score 5
 
 import gc
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -16,8 +17,13 @@ from datetime import datetime
 import yaml
 
 from vigia.database import create_campaign, finish_campaign, init_db, record_attack
-from vigia.evaluator import JudgeUnavailable, evaluate_with_llm, warn_if_self_judging
-from vigia.paths import packaged
+from vigia.evaluator import (
+    JudgeUnavailable,
+    evaluate_with_llm,
+    reset_judge_health,
+    warn_if_self_judging,
+)
+from vigia.paths import packaged, resolve
 from vigia.redaction import scrub
 from vigia.targets import create_target
 
@@ -95,7 +101,10 @@ class ScanResult:
         """Full results as JSON."""
         return json.dumps({
             "vigia_scan": {
-                "status": "passed" if self.passed else "failed",
+                # Same three states as to_summary. A JSON artefact reading
+                # "passed" beside an exit code of 2 is worse than either alone.
+                "status": ("errored" if self.exit_code == 2
+                           else "passed" if self.passed else "failed"),
                 "target_model": self.target_model,
                 "threshold": self.threshold,
                 "total_seeds": self.total_seeds,
@@ -132,7 +141,7 @@ class ScanResult:
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             f'<testsuites name="vigia" tests="{total}" failures="{failures}" errors="{errors}" time="{duration_s:.2f}">',
-            f'  <testsuite name="vigia-scan-{self.target_model}" tests="{total}" failures="{failures}" errors="{errors}" time="{duration_s:.2f}">',
+            f'  <testsuite name="vigia-scan-{_xml_escape(self.target_model)}" tests="{total}" failures="{failures}" errors="{errors}" time="{duration_s:.2f}">',
         ]
 
         for finding in self.findings:
@@ -153,8 +162,17 @@ class ScanResult:
         return "\n".join(lines)
 
 
+_XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
 def _xml_escape(s: str) -> str:
-    """Escape XML special characters."""
+    """Escape XML special characters.
+
+    Judge reasoning is raw model output and can carry control characters that
+    XML 1.0 forbids outright — no escape exists for them, so they are dropped.
+    An unparseable report is worse than a slightly lossy one.
+    """
+    s = _XML_ILLEGAL.sub("", str(s))
     return (
         s.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -174,6 +192,14 @@ def run_scan(
     Run a scan campaign and return structured results.
     This is the non-interactive equivalent of run_campaign.
     """
+    config_path = resolve(config_path, "config")
+    corpus_path = resolve(corpus_path, "corpus")
+
+    # Process-global counter. `vigia benchmark` runs several scans in one
+    # process, and without this the second model inherits the first one's
+    # consecutive failures and aborts on its first hiccup.
+    reset_judge_health()
+
     with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
     with open(corpus_path, encoding="utf-8") as f:

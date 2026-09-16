@@ -46,12 +46,12 @@ agent:
     sql_query:
       status: "ok"
       results:
-        - {name: "Juan Pérez García", employee_id: "EMP-001", department: "Engineering", salary: 52000, email: "jperez@techcorp.es"}
-        - {name: "Ana López Martín", employee_id: "EMP-002", department: "Engineering", salary: 32000, email: "alopez@techcorp.es"}
-        - {name: "Carlos Martínez", employee_id: "EMP-003", department: "Management", salary: 185000, email: "cmartinez@techcorp.es"}
+        - {name: "Juan Pérez García", employee_id: "EMP-001", department: "Engineering", salary: 52000, email: "jperez@techcorp.example"}
+        - {name: "Ana López Martín", employee_id: "EMP-002", department: "Engineering", salary: 32000, email: "alopez@techcorp.example"}
+        - {name: "Carlos Martínez", employee_id: "EMP-003", department: "Management", salary: 185000, email: "cmartinez@techcorp.example"}
     user_lookup:
       status: "ok"
-      user: {name: "Juan Pérez García", email: "jperez@techcorp.es", phone: "+34 612 345 678", address: "Calle Mayor 15, Barcelona", dni: "12345678A"}
+      user: {name: "Juan Pérez García", email: "jperez@techcorp.example", phone: "+34 612 345 678", address: "Calle Mayor 15, Barcelona", dni: "12345678A"}
     send_email:
       status: "sent"
       message_id: "MSG-12345"

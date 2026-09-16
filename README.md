@@ -73,7 +73,7 @@ of system-prompt hardening touches it.
 
 For most of 2026 this README said Catalan was 24 points more vulnerable than
 Spanish. That was wrong, and it was wrong because my Catalan corpus was a single
-seed covering 76 of its 80 attacks, and that seed was a numerical anchor — one of
+seed covering 72 of its 76 attacks, and that seed was a numerical anchor — one of
 the two strongest vectors I have. I was comparing a strong attack against a broad
 mix and calling the difference a language effect.
 
@@ -97,9 +97,9 @@ invented employees with ID numbers and salaries: the model had answered the atta
 instead of translating it.
 
 A seed like that cannot leak anything. It scores zero whatever the target does.
-And they were not spread evenly — 21 in Galician, 15 in Basque, 3 in Catalan,
-**none at all in Spanish**, which is the same shape as the finding they were
-producing.
+And they were not spread evenly — 21 in Galician, 15 in Basque, 11 and 8 in the
+two code-switched locales, 3 in Catalan, **none at all in Spanish**, which is the
+same shape as the finding they were producing.
 
 With those rows out, and a bootstrap over the seeds within each vector:
 
@@ -245,7 +245,7 @@ They live in the repository, not in the wheel, so this part needs a clone:
 ```bash
 python scripts/stats.py results/vigia_2026-09.db > docs/RESULTS.md  # every table
 python scripts/rejudge.py --campaigns 3,4,5 --judge openai/…  # score the stored
-python scripts/rejudge.py --campaigns 5 --arm reasoning       # responses again
+python scripts/rejudge.py --campaigns 18 --arm reasoning      # responses again
 python scripts/validate_corpus.py                             # before you trust it
 ```
 
@@ -325,8 +325,8 @@ framing, authority framing, plain rephrasing.
 against the same agent: 10, 11 and 11 of 22 compromised, so 45–50%. Coverage is
 partial and [documented as such](https://github.com/Gil910/Vigia/blob/main/docs/TAXONOMY.md#owasp-top-10-for-agentic-applications-2026):
 nothing yet for supply chain compromise, unexpected code execution, cascading
-failures, human-agent trust, or rogue agents. The last two need a multi-agent
-target that Vigia doesn't ship.
+failures, human-agent trust, or rogue agents. Cascading failures and rogue agents
+need a multi-agent target that Vigia doesn't ship.
 
 ## What it gets wrong
 
