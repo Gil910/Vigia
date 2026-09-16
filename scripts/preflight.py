@@ -398,7 +398,7 @@ def every_command_a_document_gives_is_real():
         for _lang, block in fenced_blocks(text):
             for raw in block.splitlines():
                 line = raw.strip().lstrip("$ ").split("#")[0].strip()
-                if not re.match(r"^(\./\S*/)?vigia\s", line):
+                if not re.match(r"^(?:\S*/)?vigia\s", line):
                     continue
                 parts = line.split()[1:]
                 if not parts or parts[0].startswith("-"):
@@ -602,7 +602,7 @@ def a_clean_install_survives_the_documented_commands():
             for _lang, block in fenced_blocks(text):
                 for raw in block.splitlines():
                     line = raw.strip().lstrip("$ ").split("#")[0].strip()
-                    m = re.match(r"^(?:\./\S*/)?vigia\s+(.*)$", line)
+                    m = re.match(r"^(?:\S*/)?vigia\s+(.*)$", line)
                     if m and not m.group(1).startswith("-"):
                         commands.add(m.group(1))
         commands |= {"--version", "strategies"}
