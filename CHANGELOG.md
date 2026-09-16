@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.1 — 2026-09-10
+## 0.6.1 — 2026-09-16
 
 0.6.0 never reached PyPI. A last read-through before uploading found that the
 second command in its own README did not work, so this is that release with the
@@ -118,7 +118,7 @@ installed the wheel. The packaging pass never re-derived a percentage. The relea
 that fixed `vigia run` shipped with `vigia run -c <a config>` broken, because
 nobody had typed the second line of the README on a clean machine.
 
-`scripts/preflight.py` is the list instead of the intention. Twenty-three checks,
+`scripts/preflight.py` is the list instead of the intention. Twenty-four checks,
 each one a bug this repository actually had: the version agrees with itself, every
 published percentage traces to a generated table, the two READMEs quote the same
 numbers, the OWASP column matches the corpus, every link and path and command in
@@ -136,7 +136,7 @@ What it does not cover is worth naming, because the point is knowing where the
 edge is: whether the Basque is Basque, whether a verdict is right, whether the
 bootstrap intervals were computed correctly. Those need a person.
 
-561 tests, ruff clean, `python scripts/preflight.py --full` clean.
+564 tests, ruff clean, `python scripts/preflight.py --full` clean.
 
 ## 0.6.0 — 2026-09-08
 

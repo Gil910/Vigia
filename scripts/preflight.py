@@ -62,6 +62,14 @@ def newest_changelog_entry():
     end = heads[1].start() if len(heads) > 1 else len(body)
     return body[heads[0].start():end]
 
+def tag_date(tag: str) -> str | None:
+    """The day a tag was created, as YYYY-MM-DD, or None if it does not exist."""
+    out = subprocess.run(
+        ["git", "for-each-ref", "--format=%(creatordate:short)", f"refs/tags/{tag}"],
+        cwd=ROOT, capture_output=True, text=True)
+    return out.stdout.strip() or None
+
+
 CHECKS = []
 
 
@@ -126,6 +134,31 @@ def one_version_everywhere():
         for other in set(re.findall(r"\bvigia[ -](\d+\.\d+\.\d+)", text)):
             if other != version and f"## {other}" not in text:
                 yield name, f"names vigia {other}, package is {version}"
+
+
+@check()
+def the_newest_entry_is_dated_the_day_it_shipped():
+    """0.6.1's heading said 2026-09-10 and the tag was cut on the 16th.
+
+    Nothing derives that date — it is typed while the release is being prepared
+    and then the release slips. It matters because `gh release create` builds its
+    notes from that section, so the published release carried a date six days
+    before it existed, and the two are sitting next to each other on the releases
+    page for anyone to compare.
+
+    Only checked once the tag exists: before that the date is a plan, not a
+    claim.
+    """
+    head = re.search(r"^## (\d+\.\d+\.\d+)\s+—\s+(\d{4}-\d{2}-\d{2})\s*$",
+                     read("CHANGELOG.md"), re.M)
+    if not head:
+        yield "CHANGELOG.md", "the newest heading is not `## X.Y.Z — YYYY-MM-DD`"
+        return
+    version, dated = head.group(1), head.group(2)
+    cut = tag_date(f"v{version}")
+    if cut and cut != dated:
+        yield "CHANGELOG.md", (f"0.{version.split('.', 1)[1]} is dated {dated} and "
+                               f"tag v{version} was cut on {cut}")
 
 
 # ------------------------------------------------------------------ the numbers

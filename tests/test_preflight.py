@@ -170,6 +170,32 @@ class TestEachCheckCatchesItsOwnDefect:
              'model: "llama3.1:8b"')
         assert run(sandbox, "no_shipped_config_lets_a_model_judge_itself")
 
+    def test_a_changelog_dated_before_the_tag_was_cut(self, sandbox):
+        module = _load(sandbox)
+        module.tag_date = lambda tag: "2026-09-20"
+        fn = next(f for f in module.CHECKS
+                  if f.__name__ == "the_newest_entry_is_dated_the_day_it_shipped")
+        assert list(fn())
+
+    def test_the_date_it_really_shipped_on_is_not_a_finding(self, sandbox):
+        # The other direction: the heading and the tag agreeing has to be quiet,
+        # or this gets muted the first time somebody cuts a tag.
+        import re
+        module = _load(sandbox)
+        head = re.search(r"^## \d+\.\d+\.\d+\s+—\s+(\d{4}-\d{2}-\d{2})",
+                         (sandbox / "CHANGELOG.md").read_text(encoding="utf-8"), re.M)
+        module.tag_date = lambda tag: head.group(1)
+        fn = next(f for f in module.CHECKS
+                  if f.__name__ == "the_newest_entry_is_dated_the_day_it_shipped")
+        assert not list(fn())
+
+    def test_a_release_with_no_tag_yet_is_not_a_finding(self, sandbox):
+        module = _load(sandbox)
+        module.tag_date = lambda tag: None
+        fn = next(f for f in module.CHECKS
+                  if f.__name__ == "the_newest_entry_is_dated_the_day_it_shipped")
+        assert not list(fn()), "before the tag exists the date is a plan, not a claim"
+
     def test_a_credential_that_is_not_a_declared_fixture(self, sandbox):
         # Assembled at runtime. Written out whole, this file would be the first
         # thing the check finds, which is a lesson about scanners scanning
