@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.6.2 — 2026-09-18
+
+0.6.1 fixed the exfiltration destinations in the corpus and stopped there. Six
+more of them were in the Python, which the check that was written for exactly
+this never read.
+
+### The same bug, in the half of the code the check did not look at
+
+- **`vigia/agents/planner.py` and `vigia/agents/runner.py` named four domains
+  anybody can register** — `review-corp.com`, `evil.com`, `external-review.com`
+  and `extern.cat`. These are not corpus entries: the planner builds them as
+  seeds whenever the agent under test has the matching tools, and the runner
+  writes `external-review.com` into the document it injects for the
+  indirect-injection seeds, which tells the agent to send the customer table
+  there. Point `vigia agent` at your own agent with a `send_email` tool that
+  works, and the mail leaves for a domain a stranger owns. They are `.invalid`
+  now, which RFC 2606 reserves so that nothing resolves.
+- **`exfiltration_destinations_cannot_resolve` read two JSON files, one YAML and
+  the demo documents.** That is why 0.6.1 shipped believing it had fixed this.
+  It reads `vigia/agents/*.py` as well now, with the three documentation hosts in
+  the remediation knowledge base allowed by name — those are links to go and read,
+  never somewhere an attack sends data.
+
+### The shipped database carried my home directory
+
+0.6.1 made `redact()` turn an absolute home directory into `~` and said, in this
+file, that the database in `results/` predated the fix and still carried mine. It
+does not any more: every campaign config is rewritten.
+
+It also needed a `VACUUM`, which is the part worth writing down. An `UPDATE` does
+not overwrite the old value — SQLite leaves it in a free page, where `strings`
+still finds it long after no row refers to it. The rewrite alone looked clean
+through SQL and was not clean on disk.
+
+`docs/RESULTS.md` regenerates byte for byte from the rewritten database, so no
+published figure moved.
+
+564 tests, ruff clean, `python scripts/preflight.py --full` clean.
+
 ## 0.6.1 — 2026-09-16
 
 0.6.0 never reached PyPI. A last read-through before uploading found that the
@@ -249,8 +288,8 @@ reason that run happened.
   map, not against the set of legal IDs — LLM01..LLM10 is the same ten strings in
   2023 and 2026, so an ID-only check cannot tell a migrated corpus from an
   unmigrated one. It found the duplicate agentic ID on its first run.
-- Untracked from git: the ChromaDB binaries under `results/`, `run_demo.log`, a
-  LinkedIn draft, and the local agent config under `.claude/`.
+- Untracked from git: the ChromaDB binaries under `results/`, `run_demo.log`, and
+  assorted local working files that were never part of the tool.
 - `SECURITY.md` with an authorised-use statement, `CONTRIBUTING.md`, this file,
   and `docs/METHODOLOGY.md`.
 - README rewritten in English with a full Spanish version at `README.es.md`.
