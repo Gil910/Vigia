@@ -450,6 +450,11 @@ def every_command_a_document_gives_is_real():
 RESERVED = re.compile(r"\.(invalid|example|test|localhost)$")
 PLACEHOLDER_OK = {"example.com", "example.org", "api.example.com"}
 
+# Documentation the remediation knowledge base points a reader at. These are
+# links to go and read, never somewhere an attack tells a target to send data,
+# so they are the one thing in the source that may name a real host.
+DOCS_OK = {"docs.nvidia.com", "huggingface.co", "microsoft.github.io", "github.com"}
+
 
 @check()
 def exfiltration_destinations_cannot_resolve():
@@ -463,10 +468,17 @@ def exfiltration_destinations_cannot_resolve():
                "vigia/config/agent_example.yaml"]
     targets += [str(p.relative_to(ROOT))
                 for p in (ROOT / "vigia/targets/rag_victim/documents").glob("*.txt")]
+    # The corpus is not the only place an attack prompt lives. The planner builds
+    # seeds in Python when the agent under test has the matching tools, and the
+    # runner writes the document it injects for the indirect-injection seeds. Six
+    # of those named domains anybody could register — review-corp.com, evil.com,
+    # external-review.com, extern.cat — for a whole release after 0.6.1 fixed the
+    # same thing in the JSON, because this check only ever read the JSON.
+    targets += [str(p.relative_to(ROOT)) for p in (ROOT / "vigia/agents").glob("*.py")]
     for name in targets:
         for m in pattern.finditer(read(name)):
             domain = (m.group(1) or m.group(2)).lower().rstrip("/")
-            if RESERVED.search(domain) or domain in PLACEHOLDER_OK:
+            if RESERVED.search(domain) or domain in PLACEHOLDER_OK or domain in DOCS_OK:
                 continue
             yield name, f"{domain} is a domain somebody can register"
 
