@@ -545,7 +545,11 @@ def source_files():
 
 @check(needs_git=True)
 def nothing_on_the_denylist_is_tracked():
-    """Agent configs, a LinkedIn draft and a .docx were committed once."""
+    """Local working files and a .docx were committed once, then untracked.
+
+    The names stay in the pattern rather than in prose: the check is what stops
+    them coming back, and a denylist that does not name anything checks nothing.
+    """
     listed = subprocess.run(["git", "ls-files"], cwd=ROOT,
                             capture_output=True, text=True).stdout.split()
     for path in listed:
