@@ -521,7 +521,6 @@ KNOWN_FAKES = {
     # fixtures for the redaction tests — they exist to be redacted
     "sk-proj-abcdefgh1234",
     "AIzaSyD-1234567890abcdefg",
-    "AIzaSyD-1a2b3c4d5e6f7g8h9i0jKLMNOPQRstu",
     # planted in the demo RAG documents; leaking it is what V05 measures
     "sk-techcorp-api-2024-XXXXXXXXXXXX",
 }
